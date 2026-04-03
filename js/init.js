@@ -529,7 +529,9 @@ class GameScene extends Phaser.Scene {
     let bodyObj;
     if (useSprite) {
       bodyObj = this.add.image(0, 0, idleKey);
-      bodyObj.setDisplaySize(32, 40);
+      const ew = enemy.type === ENEMY_TYPE.WOLF ? 34 : 30;
+      const eh = enemy.type === ENEMY_TYPE.WOLF ? 28 : 38;
+      bodyObj.setDisplaySize(ew, eh);
       bodyObj.setDepth(10);
       bodyObj.setData('currentTexture', idleKey);
     } else {
@@ -877,17 +879,17 @@ class GameScene extends Phaser.Scene {
   renderNatureObjects() {
     // Map nature types to sprite keys and display sizes
     const NATURE_SPRITE_MAP = {
-      [NATURE.TREE_SMALL]: { key: 'tree_small', w: 56, h: 64 },
-      [NATURE.TREE_LARGE]: { key: 'tree_large', w: 64, h: 72 },
-      [NATURE.TREE_PINE]: { key: 'tree_pine', w: 52, h: 68 },
-      [NATURE.TREE_AUTUMN]: { key: 'tree_autumn', w: 56, h: 64 },
-      [NATURE.ROCK_SMALL]: { key: 'rock_small', w: 36, h: 32 },
-      [NATURE.ROCK_LARGE]: { key: 'rock_large', w: 48, h: 44 },
-      [NATURE.IRON_ORE]: { key: 'iron_ore', w: 40, h: 36 },
-      [NATURE.BUSH_BERRY]: { key: 'bush_berry', w: 44, h: 40 },
-      [NATURE.BUSH_SHRUB]: { key: 'bush_shrub', w: 40, h: 36 },
-      [NATURE.TALL_GRASS]: { key: 'tall_grass', w: 36, h: 32 },
-      [NATURE.STUMP]: { key: 'stump', w: 32, h: 28 },
+      [NATURE.TREE_SMALL]:  { key: 'tree_small',  w: 48, h: 56 },
+      [NATURE.TREE_LARGE]:  { key: 'tree_large',  w: 56, h: 64 },
+      [NATURE.TREE_PINE]:   { key: 'tree_pine',   w: 48, h: 56 },
+      [NATURE.TREE_AUTUMN]: { key: 'tree_autumn', w: 48, h: 56 },
+      [NATURE.ROCK_SMALL]:  { key: 'rock_small',  w: 32, h: 28 },
+      [NATURE.ROCK_LARGE]:  { key: 'rock_large',  w: 44, h: 36 },
+      [NATURE.IRON_ORE]:    { key: 'iron_ore',    w: 36, h: 32 },
+      [NATURE.BUSH_BERRY]:  { key: 'bush_berry',  w: 36, h: 32 },
+      [NATURE.BUSH_SHRUB]:  { key: 'bush_shrub',  w: 36, h: 32 },
+      [NATURE.TALL_GRASS]:  { key: 'tall_grass',  w: 28, h: 32 },
+      [NATURE.STUMP]:       { key: 'stump',       w: 28, h: 24 },
     };
 
     for (const obj of _state.natureObjects) {
@@ -954,7 +956,9 @@ class GameScene extends Phaser.Scene {
     if (useSprite) {
       // Use extracted character sprite
       bodyObj = this.add.image(0, 0, frontKey);
-      bodyObj.setDisplaySize(32 * scale, 40 * scale);
+      const sw = settler.isChild ? 20 : 28;
+      const sh = settler.isChild ? 26 : 36;
+      bodyObj.setDisplaySize(sw, sh);
       bodyObj.setDepth(10);
       bodyObj.setData('spritePrefix', prefix);
       bodyObj.setData('currentTexture', frontKey);
@@ -1175,10 +1179,10 @@ class GameScene extends Phaser.Scene {
             obj.sprite.clearTint();
             // Restore original display size
             const sizes = {
-              tree_small: [56, 64], tree_large: [64, 72], tree_pine: [52, 68],
-              tree_autumn: [56, 64], rock_small: [36, 32], rock_large: [48, 44],
-              iron_ore: [40, 36], bush_berry: [44, 40], bush_shrub: [40, 36],
-              tall_grass: [36, 32],
+              tree_small: [48, 56], tree_large: [56, 64], tree_pine: [48, 56],
+              tree_autumn: [48, 56], rock_small: [32, 28], rock_large: [44, 36],
+              iron_ore: [36, 32], bush_berry: [36, 32], bush_shrub: [36, 32],
+              tall_grass: [28, 32],
             };
             const sz = sizes[spriteKey] || [48, 48];
             obj.sprite.setDisplaySize(sz[0], sz[1]);
@@ -1238,8 +1242,8 @@ class GameScene extends Phaser.Scene {
     const useSprite = spriteKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey);
 
     if (useSprite) {
-      const displayW = building.type === BUILDING.HOUSE ? 128 : 96;
-      const displayH = building.type === BUILDING.HOUSE ? 128 : 96;
+      const displayW = building.type === BUILDING.HOUSE ? 112 : 80;
+      const displayH = building.type === BUILDING.HOUSE ? 112 : 80;
       const img = this.add.image(x + w / 2, y + h / 2, spriteKey);
       img.setDisplaySize(displayW, displayH);
       img.setDepth(2);
