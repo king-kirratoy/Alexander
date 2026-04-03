@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.6
+**Current version:** v0.7
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -27,7 +27,7 @@ Last updated: April 3, 2026 (Central Time)
 | `js/enemies.js` | Enemy spawning and AI. `spawnEnemies()` spawns enemies at night edges, scaling with population. Enemy types unlock by day (zombie d1, skeleton d5, wolf d10). `updateEnemies()` handles pathfinding (2-3s cooldown), movement, and targeting. `despawnAllEnemies()` clears enemies at dawn. |
 | `js/combat.js` | Combat system. `processSettlerAttack()` (1s cooldown, strength+weapon damage) and `processEnemyAttack()` (1.5s cooldown). `checkSettlerKnockout()` handles knockout (lives>1) vs permadeath (lives<=1). `processRescue()` revives knocked-out settlers over 3s. `updateCombat()` runs per-frame combat loop. `destroyBuilding()` removes buildings at 0 hp. |
 | `js/dayNight.js` | Day/night cycle system. Tracks cycleTime and currentPhase (day/dusk/night/dawn). Calculates phase from cycle position using DAY_PHASE_RATIOS. Provides getDaylightTint() for overlay rendering and phase query helpers (isNight, isDusk, isDawn). |
-| `js/audio.js` | Stub — Phase 7. |
+| `js/audio.js` | Procedural audio system using Web Audio API. Master volume control, sound effect generation (14 effects: chop, mine, forage, build, craft, eat, hit, enemyDeath, settlerHurt, settlerDeath, buildComplete, birthChime, uiClick, notification), ambient sound layers (day/dusk/night/dawn) with crossfade transitions, throttle system for activity sounds. |
 | `js/camera.js` | Stub — camera controls are in GameScene for now. |
 | `js/playerActions.js` | Stub — Phase 8. |
 | `js/save.js` | Stub — Phase 9. |
@@ -80,6 +80,12 @@ Last updated: April 3, 2026 (Central Time)
 **What it does:** Enemies spawn at map edges when night begins, scaling with population. Types unlock progressively (zombie d1, skeleton d5, wolf d10). Enemies pathfind toward settlers/buildings and attack on contact. Armed settlers automatically engage; unarmed settlers flee. Settlers can be knocked out (lives > 1) or permanently die (lives <= 1). Adjacent settlers can rescue knocked-out allies over 3 seconds. Walls and buildings take damage and can be destroyed.
 **Connects to:** `constants.js` (ENEMY_DEFS, ENEMY_TYPE, AI_PRIORITY), `state.js` (enemies array), `pathfinding.js` (path requests), `dayNight.js` (phase detection), `buildings.js` (wall targeting, building destruction), `crafting.js` (weapon lookup)
 **Key functions:** `spawnEnemies()`, `updateEnemies()`, `despawnAllEnemies()`, `updateCombat()`, `processSettlerAttack()`, `processEnemyAttack()`, `checkSettlerKnockout()`, `processRescue()`, `tryFight()`, `tryFlee()`, `tryRescue()`
+
+### Audio
+**Lives in:** `audio.js`, integrated via `characters.js`, `combat.js`, `events.js`, `init.js`
+**What it does:** Procedural audio system using Web Audio API (not Phaser audio). Generates all sounds programmatically using oscillators, noise buffers, and filters. Provides 14 sound effects for activities (chop, mine, forage, build, craft, eat), combat (hit, enemyDeath, settlerHurt, settlerDeath), events (buildComplete, birthChime), and UI (uiClick, notification). Four ambient sound layers (dayAmbient, nightAmbient, duskAmbient, dawnAmbient) crossfade on phase transitions. Activity sounds throttled to max once per second. Audio initializes on game start, respects browser autoplay policy via user-interaction resume.
+**Connects to:** `constants.js` (DAY_PHASE), `init.js` (phase transitions trigger ambient layer changes, audio init on game start), `characters.js` (activity/birth sounds), `combat.js` (combat sounds), `events.js` (UI click sounds)
+**Key functions:** `initAudio()`, `playSound()`, `setAmbientLayer()`, `toggleAudio()`, `setMasterVolume()`, `canPlaySound()`
 
 ### Day/Night Cycle
 **Lives in:** `dayNight.js`, `init.js` (GameScene overlay/lighting), `characters.js` (sleep behavior)

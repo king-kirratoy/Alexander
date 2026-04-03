@@ -303,6 +303,7 @@ function tryEat(settler) {
     settler.currentActivity = 'eating';
     settler.currentTask = { type: 'eating' };
     settler.currentPriority = AI_PRIORITY.EAT;
+    if (typeof playSound === 'function') playSound('eat');
     settler.path = null;
     settler.pathIndex = 0;
     settler.aiCooldown = 1500; // brief pause while "eating"
@@ -405,10 +406,18 @@ function handleGathering(settler, delta) {
   // Set activity label based on resource
   const info = HARVESTABLE[target.type];
   if (info) {
-    if (info.resource === 'wood') settler.currentActivity = 'chopping';
-    else if (info.resource === 'stone') settler.currentActivity = 'mining';
-    else if (info.resource === 'food') settler.currentActivity = 'foraging';
-    else if (info.resource === 'iron') settler.currentActivity = 'mining';
+    if (info.resource === 'wood') {
+      settler.currentActivity = 'chopping';
+      if (typeof playSound === 'function' && typeof canPlaySound === 'function' && canPlaySound('chop')) playSound('chop');
+    }
+    else if (info.resource === 'stone' || info.resource === 'iron') {
+      settler.currentActivity = 'mining';
+      if (typeof playSound === 'function' && typeof canPlaySound === 'function' && canPlaySound('mine')) playSound('mine');
+    }
+    else if (info.resource === 'food') {
+      settler.currentActivity = 'foraging';
+      if (typeof playSound === 'function' && typeof canPlaySound === 'function' && canPlaySound('forage')) playSound('forage');
+    }
   }
 
   // Harvest the object
@@ -589,9 +598,16 @@ function handleBuilding(settler, delta) {
   settler.path = null;
   settler.pathIndex = 0;
   settler.currentActivity = 'building';
+  if (typeof playSound === 'function' && typeof canPlaySound === 'function' && canPlaySound('build')) playSound('build');
 
   if (typeof advanceBuild === 'function') {
+    const phaseBefore = building.phase;
     advanceBuild(building, settler, delta);
+    if (building.phase >= BUILD_PHASE.COMPLETE && phaseBefore < BUILD_PHASE.COMPLETE) {
+      if (typeof playSound === 'function') playSound('buildComplete');
+      clearTask(settler);
+      return false;
+    }
     if (building.phase >= BUILD_PHASE.COMPLETE) {
       clearTask(settler);
       return false;
@@ -684,6 +700,7 @@ function handleCrafting(settler, delta) {
   settler.path = null;
   settler.pathIndex = 0;
   settler.currentActivity = 'crafting';
+  if (typeof playSound === 'function' && typeof canPlaySound === 'function' && canPlaySound('craft')) playSound('craft');
 
   // Accumulate crafting progress (takes ~3 seconds)
   let craftSpeed = 1;
@@ -1225,6 +1242,9 @@ function updatePopulationGrowth(delta) {
   // Set cooldown to 3-5 day/night cycles
   _state.birthCooldown = randInt(3, 5);
 
+  // Play birth sound
+  if (typeof playSound === 'function') playSound('birthChime');
+
   // Push birth notification
   _state.notifications.push({
     text: child.name + ' was born!',
@@ -1273,6 +1293,7 @@ function updateChildGrowth() {
         settler.speed = Math.floor(settler.speed * settler.personality.mod);
       }
 
+      if (typeof playSound === 'function') playSound('notification');
       _state.notifications.push({
         text: settler.name + ' has grown up!',
         time: Date.now(),
