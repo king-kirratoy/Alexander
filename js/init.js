@@ -58,11 +58,57 @@ class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // TODO: Load spritesheet assets here
-    // For Phase 1, we use colored shapes as placeholders
+    // ── Loading progress display ──────────────────────────────
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+
+    const progressBar = this.add.graphics();
+    const progressBox = this.add.graphics();
+    progressBox.fillStyle(0x333333, 0.8);
+    progressBox.fillRect(width / 2 - 160, height / 2 - 15, 320, 30);
+
+    const loadingText = this.add.text(width / 2, height / 2 - 30, 'Loading sprites...', {
+      fontFamily: 'VT323',
+      fontSize: '20px',
+      color: '#ffffff',
+    }).setOrigin(0.5, 0.5);
+
+    const percentText = this.add.text(width / 2, height / 2, '0%', {
+      fontFamily: 'VT323',
+      fontSize: '18px',
+      color: '#ffffff',
+    }).setOrigin(0.5, 0.5);
+
+    this.load.on('progress', function (value) {
+      progressBar.clear();
+      progressBar.fillStyle(0x44aa88, 1);
+      progressBar.fillRect(width / 2 - 155, height / 2 - 10, 310 * value, 20);
+      percentText.setText(Math.round(value * 100) + '%');
+    });
+
+    this.load.on('complete', function () {
+      progressBar.destroy();
+      progressBox.destroy();
+      loadingText.destroy();
+      percentText.destroy();
+    });
+
+    // ── Load spritesheet images ───────────────────────────────
+    // ground_tiles.png is a placeholder (empty), skip it
+    this.load.image(SHEET_KEYS.NATURE, 'assets/sprites/tiles/nature_objects.png');
+    this.load.image(SHEET_KEYS.ITEMS, 'assets/sprites/items/resource_items.png');
+    this.load.image(SHEET_KEYS.SETTLERS, 'assets/sprites/settlers/settler_characters.png');
+    this.load.image(SHEET_KEYS.ENEMIES, 'assets/sprites/enemies/enemy_characters.png');
+    this.load.image(SHEET_KEYS.ICONS, 'assets/sprites/ui/icons_status.png');
+    this.load.image(SHEET_KEYS.HUT_HOUSE, 'assets/sprites/buildings/hut_house.png');
   }
 
   create() {
+    // ── Extract individual sprites from loaded sheets ─────────
+    if (typeof extractAllSprites === 'function') {
+      extractAllSprites(this);
+    }
+
     this.scene.start('GameScene');
   }
 }
@@ -470,26 +516,42 @@ class GameScene extends Phaser.Scene {
     const def = ENEMY_DEFS[enemy.type];
     if (!def) return;
 
-    const radius = 11;
-    const gfx = this.add.graphics();
-    gfx.setDepth(10);
+    // Map enemy types to sprite keys
+    const ENEMY_SPRITE_MAP = {
+      [ENEMY_TYPE.ZOMBIE]: 'zombie_idle',
+      [ENEMY_TYPE.SKELETON]: 'skeleton_idle',
+      [ENEMY_TYPE.WOLF]: 'wolf_idle',
+    };
 
-    // Shadow
-    gfx.fillStyle(0x000000, 0.3);
-    gfx.fillCircle(2, 2, radius);
+    const idleKey = ENEMY_SPRITE_MAP[enemy.type];
+    const useSprite = idleKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(idleKey);
 
-    // Body
-    gfx.fillStyle(def.color, 1);
-    gfx.fillCircle(0, 0, radius);
+    let bodyObj;
+    if (useSprite) {
+      bodyObj = this.add.image(0, 0, idleKey);
+      bodyObj.setDisplaySize(32, 40);
+      bodyObj.setDepth(10);
+      bodyObj.setData('currentTexture', idleKey);
+    } else {
+      // Fallback: colored circle
+      const radius = 11;
+      bodyObj = this.add.graphics();
+      bodyObj.setDepth(10);
+      bodyObj.fillStyle(0x000000, 0.3);
+      bodyObj.fillCircle(2, 2, radius);
+      bodyObj.fillStyle(def.color, 1);
+      bodyObj.fillCircle(0, 0, radius);
+      bodyObj.fillStyle(0xff0000, 1);
+      bodyObj.fillCircle(-3, -3, 2);
+      bodyObj.fillCircle(3, -3, 2);
+    }
 
-    // Eyes (menacing red dots)
-    gfx.fillStyle(0xff0000, 1);
-    gfx.fillCircle(-3, -3, 2);
-    gfx.fillCircle(3, -3, 2);
-
-    const container = this.add.container(enemy.x, enemy.y, [gfx]);
+    const container = this.add.container(enemy.x, enemy.y, [bodyObj]);
     container.setDepth(10);
     container.setData('enemyId', enemy.id);
+    container.setData('bodyObj', bodyObj);
+    container.setData('useSprite', useSprite);
+    container.setData('enemyType', enemy.type);
 
     // Type label
     const label = this.add.text(0, -16, def.name, {
@@ -513,7 +575,7 @@ class GameScene extends Phaser.Scene {
     hpBar.fillRect(-12, -22, 24, 3);
     container.add(hpBar);
     container.setData('hpBar', hpBar);
-    container.setData('gfx', gfx);
+    container.setData('gfx', bodyObj);
 
     this._enemySprites[enemy.id] = container;
     enemy.sprite = container;
@@ -549,6 +611,22 @@ class GameScene extends Phaser.Scene {
 
       container.x = enemy.x;
       container.y = enemy.y;
+
+      // Swap between idle and attack textures
+      if (container.getData('useSprite')) {
+        const bodyObj = container.getData('bodyObj');
+        if (bodyObj) {
+          const etype = container.getData('enemyType');
+          const typePrefix = etype; // 'zombie', 'skeleton', 'wolf'
+          const isAttacking = enemy.target != null && enemy.attackCooldown != null && enemy.attackCooldown <= 0;
+          const desiredKey = typePrefix + (isAttacking ? '_attack' : '_idle');
+          if (bodyObj.getData('currentTexture') !== desiredKey &&
+              typeof hasSpriteTexture === 'function' && hasSpriteTexture(desiredKey)) {
+            bodyObj.setTexture(desiredKey);
+            bodyObj.setData('currentTexture', desiredKey);
+          }
+        }
+      }
 
       // Update HP bar
       const hpBar = container.getData('hpBar');
@@ -740,58 +818,120 @@ class GameScene extends Phaser.Scene {
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
-    this._tileGraphics = this.add.graphics();
-    this._tileGraphics.setDepth(0);
+    // Render the entire tile map to a single RenderTexture for performance.
+    // If ground tile sprites are available, use them; otherwise use colored rects.
+    this._groundLayer = this.add.renderTexture(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this._groundLayer.setDepth(0);
+
+    // Build tile type → sprite name mapping
+    const TILE_SPRITE_MAP = {
+      [TILE.GRASS_1]: 'tile_grass1',
+      [TILE.GRASS_2]: 'tile_grass2',
+      [TILE.GRASS_3]: 'tile_grass3',
+      [TILE.GRASS_FLOWERS]: 'tile_grass_flowers',
+      [TILE.DIRT_1]: 'tile_dirt1',
+      [TILE.DIRT_2]: 'tile_dirt2',
+      [TILE.DIRT_PEBBLES]: 'tile_dirt_pebbles',
+      [TILE.DIRT_PATH]: 'tile_dirt_path',
+      [TILE.WATER_DEEP]: 'tile_water_deep',
+      [TILE.WATER_SHALLOW]: 'tile_water_shallow',
+      [TILE.WATER_RIPPLE]: 'tile_water_ripple',
+      [TILE.WATER_SHORE]: 'tile_water_shore',
+    };
+
+    // Check if any ground sprites exist
+    const useSprites = typeof hasSpriteTexture === 'function' &&
+      hasSpriteTexture('tile_grass1');
+
+    // Temporary graphics for colored rect fallback
+    const tempGfx = this.add.graphics();
+    tempGfx.setVisible(false);
 
     for (let row = 0; row < WORLD_ROWS; row++) {
       for (let col = 0; col < WORLD_COLS; col++) {
         const tileType = _state.tileMap[row][col];
-        const color = TILE_COLORS[tileType] || 0x333333;
         const x = col * TILE_SIZE;
         const y = row * TILE_SIZE;
+        const spriteKey = TILE_SPRITE_MAP[tileType];
 
-        this._tileGraphics.fillStyle(color, 1);
-        this._tileGraphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-
-        // Add subtle grid lines
-        this._tileGraphics.lineStyle(1, 0x000000, 0.08);
-        this._tileGraphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+        if (useSprites && spriteKey && hasSpriteTexture(spriteKey)) {
+          // Draw extracted tile sprite scaled to TILE_SIZE
+          this._groundLayer.drawFrame(spriteKey, undefined, x, y);
+        } else {
+          // Fallback: colored rectangle
+          const color = TILE_COLORS[tileType] || 0x333333;
+          tempGfx.clear();
+          tempGfx.fillStyle(color, 1);
+          tempGfx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+          tempGfx.lineStyle(1, 0x000000, 0.08);
+          tempGfx.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
+          this._groundLayer.draw(tempGfx, x, y);
+        }
       }
     }
+
+    tempGfx.destroy();
   }
 
 
   renderNatureObjects() {
+    // Map nature types to sprite keys and display sizes
+    const NATURE_SPRITE_MAP = {
+      [NATURE.TREE_SMALL]: { key: 'tree_small', w: 56, h: 64 },
+      [NATURE.TREE_LARGE]: { key: 'tree_large', w: 64, h: 72 },
+      [NATURE.TREE_PINE]: { key: 'tree_pine', w: 52, h: 68 },
+      [NATURE.TREE_AUTUMN]: { key: 'tree_autumn', w: 56, h: 64 },
+      [NATURE.ROCK_SMALL]: { key: 'rock_small', w: 36, h: 32 },
+      [NATURE.ROCK_LARGE]: { key: 'rock_large', w: 48, h: 44 },
+      [NATURE.IRON_ORE]: { key: 'iron_ore', w: 40, h: 36 },
+      [NATURE.BUSH_BERRY]: { key: 'bush_berry', w: 44, h: 40 },
+      [NATURE.BUSH_SHRUB]: { key: 'bush_shrub', w: 40, h: 36 },
+      [NATURE.TALL_GRASS]: { key: 'tall_grass', w: 36, h: 32 },
+      [NATURE.STUMP]: { key: 'stump', w: 32, h: 28 },
+    };
+
     for (const obj of _state.natureObjects) {
-      const info = NATURE_COLORS[obj.type];
-      if (!info) continue;
-
       const worldPos = tileToWorld(obj.col, obj.row);
-      const gfx = this.add.graphics();
-      gfx.setDepth(1);
+      const spriteInfo = NATURE_SPRITE_MAP[obj.type];
+      const useSprite = spriteInfo && typeof hasSpriteTexture === 'function' &&
+        hasSpriteTexture(spriteInfo.key);
 
-      // Draw as colored circle with slight shadow
-      gfx.fillStyle(0x000000, 0.2);
-      gfx.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-      gfx.fillStyle(info.color, 1);
-      gfx.fillCircle(worldPos.x, worldPos.y, info.radius);
+      if (useSprite) {
+        // Use extracted sprite image
+        const img = this.add.image(worldPos.x, worldPos.y, spriteInfo.key);
+        img.setDisplaySize(spriteInfo.w, spriteInfo.h);
+        img.setDepth(1);
+        img.setData('natureType', obj.type);
+        obj.sprite = img;
+        this._natureSprites.push(img);
+      } else {
+        // Fallback: colored shapes
+        const info = NATURE_COLORS[obj.type];
+        if (!info) continue;
 
-      // Berry indicator for berry bushes
-      if (obj.type === NATURE.BUSH_BERRY) {
-        gfx.fillStyle(0xe03030, 1);
-        gfx.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
-        gfx.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
-        gfx.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
+        const gfx = this.add.graphics();
+        gfx.setDepth(1);
+
+        gfx.fillStyle(0x000000, 0.2);
+        gfx.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
+        gfx.fillStyle(info.color, 1);
+        gfx.fillCircle(worldPos.x, worldPos.y, info.radius);
+
+        if (obj.type === NATURE.BUSH_BERRY) {
+          gfx.fillStyle(0xe03030, 1);
+          gfx.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
+          gfx.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
+          gfx.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
+        }
+
+        if (obj.type.startsWith('tree_')) {
+          gfx.fillStyle(0x6e4a20, 1);
+          gfx.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
+        }
+
+        obj.sprite = gfx;
+        this._natureSprites.push(gfx);
       }
-
-      // Tree trunk for trees
-      if (obj.type.startsWith('tree_')) {
-        gfx.fillStyle(0x6e4a20, 1);
-        gfx.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
-      }
-
-      obj.sprite = gfx;
-      this._natureSprites.push(gfx);
     }
   }
 
@@ -804,33 +944,48 @@ class GameScene extends Phaser.Scene {
 
 
   createSettlerSprite(settler) {
-    const color = SETTLER_COLORS[settler.gender];
+    const prefix = settler.gender === 'male' ? 'settler_male' : 'settler_female';
+    const frontKey = prefix + '_front';
+    const useSprite = typeof hasSpriteTexture === 'function' && hasSpriteTexture(frontKey);
     const scale = settler.isChild ? 0.6 : 1.0;
-    const gfx = this.add.graphics();
-    gfx.setDepth(10);
 
-    // Body
-    gfx.fillStyle(color, 1);
-    gfx.fillRoundedRect(-8, -6, 16, 20, 3);
+    let bodyObj;
 
-    // Head
-    gfx.fillStyle(0xf0c8a0, 1);
-    gfx.fillCircle(0, -10, 7);
+    if (useSprite) {
+      // Use extracted character sprite
+      bodyObj = this.add.image(0, 0, frontKey);
+      bodyObj.setDisplaySize(32 * scale, 40 * scale);
+      bodyObj.setDepth(10);
+      bodyObj.setData('spritePrefix', prefix);
+      bodyObj.setData('currentTexture', frontKey);
+    } else {
+      // Fallback: colored shape
+      const color = SETTLER_COLORS[settler.gender];
+      bodyObj = this.add.graphics();
+      bodyObj.setDepth(10);
 
-    // Hair (top half of head)
-    const hairColor = settler.gender === 'male' ? 0x5a3a1a : 0x6a3020;
-    gfx.fillStyle(hairColor, 1);
-    gfx.slice(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
-    gfx.fillPath();
+      bodyObj.fillStyle(color, 1);
+      bodyObj.fillRoundedRect(-8, -6, 16, 20, 3);
 
-    if (settler.isChild) {
-      gfx.setScale(scale);
+      bodyObj.fillStyle(0xf0c8a0, 1);
+      bodyObj.fillCircle(0, -10, 7);
+
+      const hairColor = settler.gender === 'male' ? 0x5a3a1a : 0x6a3020;
+      bodyObj.fillStyle(hairColor, 1);
+      bodyObj.slice(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
+      bodyObj.fillPath();
+
+      if (settler.isChild) {
+        bodyObj.setScale(scale);
+      }
     }
 
-    const container = this.add.container(settler.x, settler.y, [gfx]);
+    const container = this.add.container(settler.x, settler.y, [bodyObj]);
     container.setDepth(10);
     container.setSize(24, 32);
     container.setInteractive();
+    container.setData('bodyObj', bodyObj);
+    container.setData('useSprite', useSprite);
 
     // Name label
     const nameText = this.add.text(0, -22, settler.name, {
@@ -856,6 +1011,7 @@ class GameScene extends Phaser.Scene {
 
     container.setData('settlerName', settler.name);
     container.setData('isChild', settler.isChild);
+    container.setData('settlerGender', settler.gender);
     this._settlerSprites[settler.id] = container;
     settler.sprite = container;
 
@@ -911,6 +1067,37 @@ class GameScene extends Phaser.Scene {
       container.x = settler.x;
       container.y = settler.y;
 
+      // Update sprite texture based on activity/direction
+      if (container.getData('useSprite')) {
+        const bodyObj = container.getData('bodyObj');
+        if (bodyObj) {
+          const prefix = bodyObj.getData('spritePrefix');
+          const act = settler.currentActivity;
+          let desiredKey = prefix + '_front';
+
+          if (act === 'chopping') desiredKey = prefix + '_chop';
+          else if (act === 'mining') desiredKey = prefix + '_mine';
+          else if (act === 'foraging') desiredKey = prefix + (settler.gender === 'female' ? '_forage' : '_front');
+          else if (act === 'building') desiredKey = prefix + (settler.gender === 'female' ? '_build' : '_carry');
+          else if (act === 'sleeping' || act === 'knockedOut') desiredKey = prefix + '_sleep';
+          else if (act === 'carrying' || act === 'crafting') desiredKey = prefix + '_carry';
+          else if (settler.direction) {
+            // Use directional sprite based on movement
+            if (settler.direction === 'up') desiredKey = prefix + '_back';
+            else if (settler.direction === 'down') desiredKey = prefix + '_front';
+            else if (settler.direction === 'left') desiredKey = prefix + '_left';
+            else if (settler.direction === 'right') desiredKey = prefix + '_right';
+          }
+
+          // Only swap if texture changed and exists
+          if (bodyObj.getData('currentTexture') !== desiredKey &&
+              typeof hasSpriteTexture === 'function' && hasSpriteTexture(desiredKey)) {
+            bodyObj.setTexture(desiredKey);
+            bodyObj.setData('currentTexture', desiredKey);
+          }
+        }
+      }
+
       // Update activity label
       const actLabel = container.getData('activityLabel');
       if (actLabel) {
@@ -936,55 +1123,92 @@ class GameScene extends Phaser.Scene {
     for (const obj of _state.natureObjects) {
       if (!obj.sprite) continue;
 
+      const isImage = obj.sprite.type === 'Image';
+
       if (obj.depleted && !obj._visualDepleted) {
-        // Mark as visually depleted
         obj._visualDepleted = true;
-        const info = NATURE_COLORS[obj.type];
-        const worldPos = tileToWorld(obj.col, obj.row);
 
-        obj.sprite.clear();
-
-        if (obj.type.startsWith('tree_')) {
-          // Show stump
-          obj.sprite.fillStyle(0x000000, 0.2);
-          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, 6);
-          obj.sprite.fillStyle(0x7a5a28, 1);
-          obj.sprite.fillCircle(worldPos.x, worldPos.y, 6);
-        } else if (obj.type === NATURE.BUSH_BERRY) {
-          // Plain green bush, no berries
-          obj.sprite.fillStyle(0x000000, 0.2);
-          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-          obj.sprite.fillStyle(0x3a7a30, 1);
-          obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
+        if (isImage) {
+          // Image sprite: swap to stump texture or hide
+          if (obj.type.startsWith('tree_')) {
+            if (typeof hasSpriteTexture === 'function' && hasSpriteTexture('stump')) {
+              obj.sprite.setTexture('stump');
+              obj.sprite.setDisplaySize(32, 28);
+            } else {
+              obj.sprite.setVisible(false);
+            }
+          } else if (obj.type === NATURE.BUSH_BERRY) {
+            // Dim the bush to show no berries
+            obj.sprite.setTint(0x669966);
+          } else {
+            obj.sprite.setVisible(false);
+          }
         } else {
-          // Rocks/iron — hide
-          obj.sprite.setVisible(false);
+          // Graphics fallback
+          const info = NATURE_COLORS[obj.type];
+          const worldPos = tileToWorld(obj.col, obj.row);
+          obj.sprite.clear();
+
+          if (obj.type.startsWith('tree_')) {
+            obj.sprite.fillStyle(0x000000, 0.2);
+            obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, 6);
+            obj.sprite.fillStyle(0x7a5a28, 1);
+            obj.sprite.fillCircle(worldPos.x, worldPos.y, 6);
+          } else if (obj.type === NATURE.BUSH_BERRY) {
+            obj.sprite.fillStyle(0x000000, 0.2);
+            obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
+            obj.sprite.fillStyle(0x3a7a30, 1);
+            obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
+          } else {
+            obj.sprite.setVisible(false);
+          }
         }
       } else if (!obj.depleted && obj._visualDepleted) {
-        // Regrown — restore original visual
         obj._visualDepleted = false;
-        const info = NATURE_COLORS[obj.type];
-        if (!info) continue;
-        const worldPos = tileToWorld(obj.col, obj.row);
 
-        obj.sprite.clear();
-        obj.sprite.setVisible(true);
+        if (isImage) {
+          // Restore original texture
+          const natureType = obj.sprite.getData('natureType') || obj.type;
+          const spriteKey = natureType; // sprite key matches nature type string
+          if (typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey)) {
+            obj.sprite.setTexture(spriteKey);
+            obj.sprite.clearTint();
+            // Restore original display size
+            const sizes = {
+              tree_small: [56, 64], tree_large: [64, 72], tree_pine: [52, 68],
+              tree_autumn: [56, 64], rock_small: [36, 32], rock_large: [48, 44],
+              iron_ore: [40, 36], bush_berry: [44, 40], bush_shrub: [40, 36],
+              tall_grass: [36, 32],
+            };
+            const sz = sizes[spriteKey] || [48, 48];
+            obj.sprite.setDisplaySize(sz[0], sz[1]);
+          }
+          obj.sprite.setVisible(true);
+        } else {
+          // Graphics fallback
+          const info = NATURE_COLORS[obj.type];
+          if (!info) continue;
+          const worldPos = tileToWorld(obj.col, obj.row);
 
-        obj.sprite.fillStyle(0x000000, 0.2);
-        obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-        obj.sprite.fillStyle(info.color, 1);
-        obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
+          obj.sprite.clear();
+          obj.sprite.setVisible(true);
 
-        if (obj.type === NATURE.BUSH_BERRY) {
-          obj.sprite.fillStyle(0xe03030, 1);
-          obj.sprite.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
-          obj.sprite.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
-          obj.sprite.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
-        }
+          obj.sprite.fillStyle(0x000000, 0.2);
+          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
+          obj.sprite.fillStyle(info.color, 1);
+          obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
 
-        if (obj.type.startsWith('tree_')) {
-          obj.sprite.fillStyle(0x6e4a20, 1);
-          obj.sprite.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
+          if (obj.type === NATURE.BUSH_BERRY) {
+            obj.sprite.fillStyle(0xe03030, 1);
+            obj.sprite.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
+            obj.sprite.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
+            obj.sprite.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
+          }
+
+          if (obj.type.startsWith('tree_')) {
+            obj.sprite.fillStyle(0x6e4a20, 1);
+            obj.sprite.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
+          }
         }
       }
     }
@@ -1004,32 +1228,57 @@ class GameScene extends Phaser.Scene {
     const def = BUILDING_DEFS[building.type];
     if (!def) return;
 
-    const color = BUILDING_COLORS[building.type] || 0x888888;
     const w = def.size.w * TILE_SIZE;
     const h = def.size.h * TILE_SIZE;
     const x = building.col * TILE_SIZE;
     const y = building.row * TILE_SIZE;
 
-    const opacity = this.getBuildPhaseOpacity(building.phase);
+    // Check if this building type has sprite phases (hut/house only)
+    const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
+    const useSprite = spriteKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey);
 
-    const gfx = this.add.graphics();
-    gfx.setDepth(2);
+    if (useSprite) {
+      const displayW = building.type === BUILDING.HOUSE ? 128 : 96;
+      const displayH = building.type === BUILDING.HOUSE ? 128 : 96;
+      const img = this.add.image(x + w / 2, y + h / 2, spriteKey);
+      img.setDisplaySize(displayW, displayH);
+      img.setDepth(2);
+      img.setData('phase', building.phase);
+      img.setData('isSprite', true);
+      img.setData('buildingType', building.type);
+      building.sprite = img;
+      this._buildingSprites[building.id] = img;
+    } else {
+      // Fallback: colored rectangle
+      const color = BUILDING_COLORS[building.type] || 0x888888;
+      const opacity = this.getBuildPhaseOpacity(building.phase);
+      const gfx = this.add.graphics();
+      gfx.setDepth(2);
 
-    // Shadow
-    gfx.fillStyle(0x000000, 0.15 * opacity);
-    gfx.fillRect(x + 3, y + 3, w, h);
+      gfx.fillStyle(0x000000, 0.15 * opacity);
+      gfx.fillRect(x + 3, y + 3, w, h);
+      gfx.fillStyle(color, opacity);
+      gfx.fillRect(x, y, w, h);
+      gfx.lineStyle(1, 0x000000, 0.3 * opacity);
+      gfx.strokeRect(x, y, w, h);
 
-    // Main rect
-    gfx.fillStyle(color, opacity);
-    gfx.fillRect(x, y, w, h);
+      building.sprite = gfx;
+      gfx.setData('phase', building.phase);
+      gfx.setData('isSprite', false);
+      this._buildingSprites[building.id] = gfx;
+    }
+  }
 
-    // Border
-    gfx.lineStyle(1, 0x000000, 0.3 * opacity);
-    gfx.strokeRect(x, y, w, h);
+  _getBuildingPhaseSprite(buildingType, phase) {
+    // Only hut and house have sprite phases
+    if (buildingType !== BUILDING.HUT && buildingType !== BUILDING.HOUSE) return null;
 
-    building.sprite = gfx;
-    gfx.setData('phase', building.phase);
-    this._buildingSprites[building.id] = gfx;
+    const prefix = buildingType === BUILDING.HUT ? 'hut' : 'house';
+    if (phase === BUILD_PHASE.FOUNDATION) return prefix + '_foundation';
+    if (phase === BUILD_PHASE.FRAME) return prefix + '_frame';
+    // WALLS and COMPLETE both use the complete sprite
+    if (phase >= BUILD_PHASE.WALLS) return prefix + '_complete';
+    return prefix + '_foundation';
   }
 
 
@@ -1061,31 +1310,40 @@ class GameScene extends Phaser.Scene {
 
     // Update existing building sprites when phase changes
     for (const building of _state.buildings) {
-      const gfx = this._buildingSprites[building.id];
-      if (!gfx) continue;
+      const obj = this._buildingSprites[building.id];
+      if (!obj) continue;
 
-      const trackedPhase = gfx.getData('phase');
+      const trackedPhase = obj.getData('phase');
       if (trackedPhase !== building.phase) {
-        // Phase changed — redraw
-        gfx.clear();
-        const def = BUILDING_DEFS[building.type];
-        if (!def) continue;
+        if (obj.getData('isSprite')) {
+          // Sprite-based (hut/house): swap texture
+          const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
+          if (spriteKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey)) {
+            obj.setTexture(spriteKey);
+          }
+          obj.setData('phase', building.phase);
+        } else {
+          // Graphics-based: redraw colored rectangle
+          obj.clear();
+          const def = BUILDING_DEFS[building.type];
+          if (!def) continue;
 
-        const color = BUILDING_COLORS[building.type] || 0x888888;
-        const w = def.size.w * TILE_SIZE;
-        const h = def.size.h * TILE_SIZE;
-        const x = building.col * TILE_SIZE;
-        const y = building.row * TILE_SIZE;
-        const opacity = this.getBuildPhaseOpacity(building.phase);
+          const color = BUILDING_COLORS[building.type] || 0x888888;
+          const w = def.size.w * TILE_SIZE;
+          const h = def.size.h * TILE_SIZE;
+          const x = building.col * TILE_SIZE;
+          const y = building.row * TILE_SIZE;
+          const opacity = this.getBuildPhaseOpacity(building.phase);
 
-        gfx.fillStyle(0x000000, 0.15 * opacity);
-        gfx.fillRect(x + 3, y + 3, w, h);
-        gfx.fillStyle(color, opacity);
-        gfx.fillRect(x, y, w, h);
-        gfx.lineStyle(1, 0x000000, 0.3 * opacity);
-        gfx.strokeRect(x, y, w, h);
+          obj.fillStyle(0x000000, 0.15 * opacity);
+          obj.fillRect(x + 3, y + 3, w, h);
+          obj.fillStyle(color, opacity);
+          obj.fillRect(x, y, w, h);
+          obj.lineStyle(1, 0x000000, 0.3 * opacity);
+          obj.strokeRect(x, y, w, h);
 
-        gfx.setData('phase', building.phase);
+          obj.setData('phase', building.phase);
+        }
       }
     }
   }
