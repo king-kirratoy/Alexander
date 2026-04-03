@@ -16,24 +16,6 @@ const TILE_COLORS = {
   [TILE.WATER_SHORE]: 0x5ba0d8,
 };
 
-const NATURE_COLORS = {
-  [NATURE.TREE_SMALL]: { color: 0x3c8c32, radius: 12 },
-  [NATURE.TREE_LARGE]: { color: 0x2e7a28, radius: 16 },
-  [NATURE.TREE_PINE]: { color: 0x1e6e30, radius: 10 },
-  [NATURE.TREE_AUTUMN]: { color: 0xc86420, radius: 12 },
-  [NATURE.ROCK_SMALL]: { color: 0x8c8c8c, radius: 8 },
-  [NATURE.ROCK_LARGE]: { color: 0x6e6e6e, radius: 14 },
-  [NATURE.IRON_ORE]: { color: 0x504848, radius: 10 },
-  [NATURE.BUSH_BERRY]: { color: 0x4aa040, radius: 10 },
-  [NATURE.BUSH_SHRUB]: { color: 0x50a848, radius: 9 },
-  [NATURE.TALL_GRASS]: { color: 0x60b850, radius: 7 },
-  [NATURE.STUMP]: { color: 0x7a5a28, radius: 8 },
-};
-
-const SETTLER_COLORS = {
-  male: 0x4488aa,
-  female: 0xaa4488,
-};
 
 const BUILDING_COLORS = {
   [BUILDING.CAMPFIRE]: 0xe06020,
@@ -50,6 +32,60 @@ const BUILDING_COLORS = {
 };
 
 
+// ── Tile → texture key mapping ─────────────────────────────────
+const TILE_TEXTURE_MAP = {
+  [TILE.GRASS_1]:       'tile_grass1',
+  [TILE.GRASS_2]:       'tile_grass2',
+  [TILE.GRASS_3]:       'tile_grass3',
+  [TILE.GRASS_FLOWERS]: 'tile_grass_flowers',
+  [TILE.DIRT_1]:        'tile_dirt1',
+  [TILE.DIRT_2]:        'tile_dirt2',
+  [TILE.DIRT_PEBBLES]:  'tile_dirt_pebbles',
+  [TILE.DIRT_PATH]:     'tile_dirt_path',
+  [TILE.WATER_DEEP]:    'tile_water_deep',
+  [TILE.WATER_SHALLOW]: 'tile_water_shallow',
+  [TILE.WATER_RIPPLE]:  'tile_water_ripple',
+  [TILE.WATER_SHORE]:   'tile_water_shore',
+};
+
+// ── Nature type → display size mapping ─────────────────────────
+const NATURE_DISPLAY_SIZE = {
+  [NATURE.TREE_SMALL]:  { w: 48, h: 56 },
+  [NATURE.TREE_LARGE]:  { w: 56, h: 64 },
+  [NATURE.TREE_PINE]:   { w: 44, h: 60 },
+  [NATURE.TREE_AUTUMN]: { w: 48, h: 56 },
+  [NATURE.ROCK_SMALL]:  { w: 32, h: 28 },
+  [NATURE.ROCK_LARGE]:  { w: 44, h: 36 },
+  [NATURE.IRON_ORE]:    { w: 36, h: 32 },
+  [NATURE.BUSH_BERRY]:  { w: 40, h: 36 },
+  [NATURE.BUSH_SHRUB]:  { w: 38, h: 34 },
+  [NATURE.TALL_GRASS]:  { w: 36, h: 34 },
+  [NATURE.STUMP]:       { w: 32, h: 28 },
+};
+
+/**
+ * Return the correct texture key for a settler based on gender/activity/direction.
+ */
+function getSettlerTexture(settler) {
+  const g = settler.gender; // 'male' or 'female'
+  const act = settler.currentActivity;
+
+  if (act === 'sleeping' || act === 'knockedOut') return g + '_sleep';
+  if (act === 'chopping')                          return 'male_chop';
+  if (act === 'mining')                            return 'male_mine';
+  if (act === 'foraging')                          return 'female_forage';
+  if (act === 'building')                          return 'female_build';
+  if (act === 'carrying' || act === 'crafting')    return g + '_carry';
+
+  // Directional idle / walking
+  const dir = settler.direction;
+  if (dir === 'up')    return g + '_back';
+  if (dir === 'left')  return g + '_left';
+  if (dir === 'right') return g + '_right';
+  return g + '_front';
+}
+
+
 // ═══════════ BOOT SCENE ═══════════
 
 class BootScene extends Phaser.Scene {
@@ -58,7 +94,7 @@ class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // ── Loading progress display ──────────────────────────────
+    // ── Loading progress bar ──────────────────────────────────
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
@@ -93,22 +129,78 @@ class BootScene extends Phaser.Scene {
       percentText.destroy();
     });
 
-    // ── Load spritesheet images ───────────────────────────────
-    // ground_tiles.png is a placeholder (empty), skip it
-    this.load.image(SHEET_KEYS.NATURE, 'assets/sprites/tiles/nature_objects.png');
-    this.load.image(SHEET_KEYS.ITEMS, 'assets/sprites/items/resource_items.png');
-    this.load.image(SHEET_KEYS.SETTLERS, 'assets/sprites/settlers/settler_characters.png');
-    this.load.image(SHEET_KEYS.ENEMIES, 'assets/sprites/enemies/enemy_characters.png');
-    this.load.image(SHEET_KEYS.ICONS, 'assets/sprites/ui/icons_status.png');
-    this.load.image(SHEET_KEYS.HUT_HOUSE, 'assets/sprites/buildings/hut_house.png');
+    // ── Ground tiles (64×64 solid-color PNGs) ─────────────────
+    this.load.image('tile_grass1',       'assets/sprites/individual/tiles/grass1.png');
+    this.load.image('tile_grass2',       'assets/sprites/individual/tiles/grass2.png');
+    this.load.image('tile_grass3',       'assets/sprites/individual/tiles/grass3.png');
+    this.load.image('tile_grass_flowers','assets/sprites/individual/tiles/grass_flowers.png');
+    this.load.image('tile_dirt1',        'assets/sprites/individual/tiles/dirt1.png');
+    this.load.image('tile_dirt2',        'assets/sprites/individual/tiles/dirt2.png');
+    this.load.image('tile_dirt_pebbles', 'assets/sprites/individual/tiles/dirt_pebbles.png');
+    this.load.image('tile_dirt_path',    'assets/sprites/individual/tiles/dirt_path.png');
+    this.load.image('tile_water_deep',   'assets/sprites/individual/tiles/water_deep.png');
+    this.load.image('tile_water_shallow','assets/sprites/individual/tiles/water_shallow.png');
+    this.load.image('tile_water_ripple', 'assets/sprites/individual/tiles/water_ripple.png');
+    this.load.image('tile_water_shore',  'assets/sprites/individual/tiles/water_shore.png');
+    this.load.image('tile_transition1',  'assets/sprites/individual/tiles/transition1.png');
+    this.load.image('tile_transition2',  'assets/sprites/individual/tiles/transition2.png');
+    this.load.image('tile_transition3',  'assets/sprites/individual/tiles/transition3.png');
+    this.load.image('tile_transition4',  'assets/sprites/individual/tiles/transition4.png');
+
+    // ── Nature objects ─────────────────────────────────────────
+    this.load.image('tree_small',  'assets/sprites/individual/nature/tree_small.png');
+    this.load.image('tree_large',  'assets/sprites/individual/nature/tree_large.png');
+    this.load.image('tree_pine',   'assets/sprites/individual/nature/tree_pine.png');
+    this.load.image('tree_autumn', 'assets/sprites/individual/nature/tree_autumn.png');
+    this.load.image('rock_small',  'assets/sprites/individual/nature/rock_small.png');
+    this.load.image('rock_large',  'assets/sprites/individual/nature/rock_large.png');
+    this.load.image('rock_mossy',  'assets/sprites/individual/nature/rock_mossy.png');
+    this.load.image('iron_ore',    'assets/sprites/individual/nature/iron_ore.png');
+    this.load.image('bush_berry',  'assets/sprites/individual/nature/bush_berry.png');
+    this.load.image('bush_shrub',  'assets/sprites/individual/nature/bush_shrub.png');
+    this.load.image('tall_grass',  'assets/sprites/individual/nature/tall_grass.png');
+    this.load.image('flower_bush', 'assets/sprites/individual/nature/flower_bush.png');
+    this.load.image('stump',       'assets/sprites/individual/nature/stump.png');
+    this.load.image('fallen_log',  'assets/sprites/individual/nature/fallen_log.png');
+    this.load.image('pond',        'assets/sprites/individual/nature/pond.png');
+    this.load.image('mushrooms',   'assets/sprites/individual/nature/mushrooms.png');
+
+    // ── Settlers ───────────────────────────────────────────────
+    this.load.image('male_front',    'assets/sprites/individual/settlers/male_front.png');
+    this.load.image('male_back',     'assets/sprites/individual/settlers/male_back.png');
+    this.load.image('male_left',     'assets/sprites/individual/settlers/male_left.png');
+    this.load.image('male_right',    'assets/sprites/individual/settlers/male_right.png');
+    this.load.image('male_chop',     'assets/sprites/individual/settlers/male_chop.png');
+    this.load.image('male_mine',     'assets/sprites/individual/settlers/male_mine.png');
+    this.load.image('male_carry',    'assets/sprites/individual/settlers/male_carry.png');
+    this.load.image('male_sleep',    'assets/sprites/individual/settlers/male_sleep.png');
+    this.load.image('female_front',  'assets/sprites/individual/settlers/female_front.png');
+    this.load.image('female_back',   'assets/sprites/individual/settlers/female_back.png');
+    this.load.image('female_left',   'assets/sprites/individual/settlers/female_left.png');
+    this.load.image('female_right',  'assets/sprites/individual/settlers/female_right.png');
+    this.load.image('female_forage', 'assets/sprites/individual/settlers/female_forage.png');
+    this.load.image('female_build',  'assets/sprites/individual/settlers/female_build.png');
+    this.load.image('female_carry',  'assets/sprites/individual/settlers/female_carry.png');
+    this.load.image('female_sleep',  'assets/sprites/individual/settlers/female_sleep.png');
+
+    // ── Enemies ────────────────────────────────────────────────
+    this.load.image('zombie_idle',    'assets/sprites/individual/enemies/zombie_1.png');
+    this.load.image('zombie_attack',  'assets/sprites/individual/enemies/zombie_6.png');
+    this.load.image('skeleton_idle',  'assets/sprites/individual/enemies/skeleton_1.png');
+    this.load.image('skeleton_attack','assets/sprites/individual/enemies/skeleton_6.png');
+    this.load.image('wolf_idle',      'assets/sprites/individual/enemies/wolf_1.png');
+    this.load.image('wolf_attack',    'assets/sprites/individual/enemies/wolf_5.png');
+
+    // ── Buildings (hut & house construction phases) ────────────
+    this.load.image('hut_foundation',  'assets/sprites/individual/buildings/hut_foundation.png');
+    this.load.image('hut_frame',       'assets/sprites/individual/buildings/hut_frame.png');
+    this.load.image('hut_complete',    'assets/sprites/individual/buildings/hut_complete.png');
+    this.load.image('house_foundation','assets/sprites/individual/buildings/house_foundation.png');
+    this.load.image('house_frame',     'assets/sprites/individual/buildings/house_frame.png');
+    this.load.image('house_complete',  'assets/sprites/individual/buildings/house_complete.png');
   }
 
   create() {
-    // ── Extract individual sprites from loaded sheets ─────────
-    if (typeof extractAllSprites === 'function') {
-      extractAllSprites(this);
-    }
-
     this.scene.start('GameScene');
   }
 }
@@ -516,43 +608,25 @@ class GameScene extends Phaser.Scene {
     const def = ENEMY_DEFS[enemy.type];
     if (!def) return;
 
-    // Map enemy types to sprite keys
-    const ENEMY_SPRITE_MAP = {
-      [ENEMY_TYPE.ZOMBIE]: 'zombie_idle',
+    const ENEMY_IDLE_KEY = {
+      [ENEMY_TYPE.ZOMBIE]:   'zombie_idle',
       [ENEMY_TYPE.SKELETON]: 'skeleton_idle',
-      [ENEMY_TYPE.WOLF]: 'wolf_idle',
+      [ENEMY_TYPE.WOLF]:     'wolf_idle',
     };
 
-    const idleKey = ENEMY_SPRITE_MAP[enemy.type];
-    const useSprite = idleKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(idleKey);
+    const idleKey = ENEMY_IDLE_KEY[enemy.type] || 'zombie_idle';
+    const ew = enemy.type === ENEMY_TYPE.WOLF ? 36 : 30;
+    const eh = enemy.type === ENEMY_TYPE.WOLF ? 30 : 38;
 
-    let bodyObj;
-    if (useSprite) {
-      bodyObj = this.add.image(0, 0, idleKey);
-      const ew = enemy.type === ENEMY_TYPE.WOLF ? 34 : 30;
-      const eh = enemy.type === ENEMY_TYPE.WOLF ? 28 : 38;
-      bodyObj.setDisplaySize(ew, eh);
-      bodyObj.setDepth(10);
-      bodyObj.setData('currentTexture', idleKey);
-    } else {
-      // Fallback: colored circle
-      const radius = 11;
-      bodyObj = this.add.graphics();
-      bodyObj.setDepth(10);
-      bodyObj.fillStyle(0x000000, 0.3);
-      bodyObj.fillCircle(2, 2, radius);
-      bodyObj.fillStyle(def.color, 1);
-      bodyObj.fillCircle(0, 0, radius);
-      bodyObj.fillStyle(0xff0000, 1);
-      bodyObj.fillCircle(-3, -3, 2);
-      bodyObj.fillCircle(3, -3, 2);
-    }
+    const bodyObj = this.add.image(0, 0, idleKey);
+    bodyObj.setDisplaySize(ew, eh);
+    bodyObj.setDepth(10);
+    bodyObj.setData('currentTexture', idleKey);
 
     const container = this.add.container(enemy.x, enemy.y, [bodyObj]);
     container.setDepth(10);
     container.setData('enemyId', enemy.id);
     container.setData('bodyObj', bodyObj);
-    container.setData('useSprite', useSprite);
     container.setData('enemyType', enemy.type);
 
     // Type label
@@ -615,18 +689,14 @@ class GameScene extends Phaser.Scene {
       container.y = enemy.y;
 
       // Swap between idle and attack textures
-      if (container.getData('useSprite')) {
-        const bodyObj = container.getData('bodyObj');
-        if (bodyObj) {
-          const etype = container.getData('enemyType');
-          const typePrefix = etype; // 'zombie', 'skeleton', 'wolf'
-          const isAttacking = enemy.target != null && enemy.attackCooldown != null && enemy.attackCooldown <= 0;
-          const desiredKey = typePrefix + (isAttacking ? '_attack' : '_idle');
-          if (bodyObj.getData('currentTexture') !== desiredKey &&
-              typeof hasSpriteTexture === 'function' && hasSpriteTexture(desiredKey)) {
-            bodyObj.setTexture(desiredKey);
-            bodyObj.setData('currentTexture', desiredKey);
-          }
+      const bodyObj = container.getData('bodyObj');
+      if (bodyObj) {
+        const etype = container.getData('enemyType');
+        const isAttacking = enemy.target != null && enemy.attackCooldown != null && enemy.attackCooldown <= 0;
+        const desiredKey = etype + (isAttacking ? '_attack' : '_idle');
+        if (bodyObj.getData('currentTexture') !== desiredKey) {
+          bodyObj.setTexture(desiredKey);
+          bodyObj.setData('currentTexture', desiredKey);
         }
       }
 
@@ -820,120 +890,47 @@ class GameScene extends Phaser.Scene {
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
-    // Render the entire tile map to a single RenderTexture for performance.
-    // If ground tile sprites are available, use them; otherwise use colored rects.
+    // Render all tiles to a single RenderTexture for performance.
+    // Tile PNGs are 64×64 and drawn at their natural size.
     this._groundLayer = this.add.renderTexture(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this._groundLayer.setDepth(0);
-
-    // Build tile type → sprite name mapping
-    const TILE_SPRITE_MAP = {
-      [TILE.GRASS_1]: 'tile_grass1',
-      [TILE.GRASS_2]: 'tile_grass2',
-      [TILE.GRASS_3]: 'tile_grass3',
-      [TILE.GRASS_FLOWERS]: 'tile_grass_flowers',
-      [TILE.DIRT_1]: 'tile_dirt1',
-      [TILE.DIRT_2]: 'tile_dirt2',
-      [TILE.DIRT_PEBBLES]: 'tile_dirt_pebbles',
-      [TILE.DIRT_PATH]: 'tile_dirt_path',
-      [TILE.WATER_DEEP]: 'tile_water_deep',
-      [TILE.WATER_SHALLOW]: 'tile_water_shallow',
-      [TILE.WATER_RIPPLE]: 'tile_water_ripple',
-      [TILE.WATER_SHORE]: 'tile_water_shore',
-    };
-
-    // Check if any ground sprites exist
-    const useSprites = typeof hasSpriteTexture === 'function' &&
-      hasSpriteTexture('tile_grass1');
-
-    // Temporary graphics for colored rect fallback
-    const tempGfx = this.add.graphics();
-    tempGfx.setVisible(false);
 
     for (let row = 0; row < WORLD_ROWS; row++) {
       for (let col = 0; col < WORLD_COLS; col++) {
         const tileType = _state.tileMap[row][col];
-        const x = col * TILE_SIZE;
-        const y = row * TILE_SIZE;
-        const spriteKey = TILE_SPRITE_MAP[tileType];
-
-        if (useSprites && spriteKey && hasSpriteTexture(spriteKey)) {
-          // Draw extracted tile sprite scaled to TILE_SIZE
-          this._groundLayer.drawFrame(spriteKey, undefined, x, y);
+        const key = TILE_TEXTURE_MAP[tileType];
+        if (key) {
+          this._groundLayer.drawFrame(key, undefined, col * TILE_SIZE, row * TILE_SIZE);
         } else {
-          // Fallback: colored rectangle
+          // Unmapped tile type: draw solid dark rect as fallback
           const color = TILE_COLORS[tileType] || 0x333333;
-          tempGfx.clear();
+          const tempGfx = this.add.graphics();
+          tempGfx.setVisible(false);
           tempGfx.fillStyle(color, 1);
           tempGfx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-          tempGfx.lineStyle(1, 0x000000, 0.08);
-          tempGfx.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
-          this._groundLayer.draw(tempGfx, x, y);
+          this._groundLayer.draw(tempGfx, col * TILE_SIZE, row * TILE_SIZE);
+          tempGfx.destroy();
         }
       }
     }
-
-    tempGfx.destroy();
   }
 
 
   renderNatureObjects() {
-    // Map nature types to sprite keys and display sizes
-    const NATURE_SPRITE_MAP = {
-      [NATURE.TREE_SMALL]:  { key: 'tree_small',  w: 48, h: 56 },
-      [NATURE.TREE_LARGE]:  { key: 'tree_large',  w: 56, h: 64 },
-      [NATURE.TREE_PINE]:   { key: 'tree_pine',   w: 48, h: 56 },
-      [NATURE.TREE_AUTUMN]: { key: 'tree_autumn', w: 48, h: 56 },
-      [NATURE.ROCK_SMALL]:  { key: 'rock_small',  w: 32, h: 28 },
-      [NATURE.ROCK_LARGE]:  { key: 'rock_large',  w: 44, h: 36 },
-      [NATURE.IRON_ORE]:    { key: 'iron_ore',    w: 36, h: 32 },
-      [NATURE.BUSH_BERRY]:  { key: 'bush_berry',  w: 36, h: 32 },
-      [NATURE.BUSH_SHRUB]:  { key: 'bush_shrub',  w: 36, h: 32 },
-      [NATURE.TALL_GRASS]:  { key: 'tall_grass',  w: 28, h: 32 },
-      [NATURE.STUMP]:       { key: 'stump',       w: 28, h: 24 },
-    };
-
     for (const obj of _state.natureObjects) {
       const worldPos = tileToWorld(obj.col, obj.row);
-      const spriteInfo = NATURE_SPRITE_MAP[obj.type];
-      const useSprite = spriteInfo && typeof hasSpriteTexture === 'function' &&
-        hasSpriteTexture(spriteInfo.key);
+      const key = obj.type; // NATURE constants match texture keys
+      const size = NATURE_DISPLAY_SIZE[obj.type];
+      if (!size) continue;
 
-      if (useSprite) {
-        // Use extracted sprite image
-        const img = this.add.image(worldPos.x, worldPos.y, spriteInfo.key);
-        img.setDisplaySize(spriteInfo.w, spriteInfo.h);
-        img.setDepth(1);
-        img.setData('natureType', obj.type);
-        obj.sprite = img;
-        this._natureSprites.push(img);
-      } else {
-        // Fallback: colored shapes
-        const info = NATURE_COLORS[obj.type];
-        if (!info) continue;
-
-        const gfx = this.add.graphics();
-        gfx.setDepth(1);
-
-        gfx.fillStyle(0x000000, 0.2);
-        gfx.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-        gfx.fillStyle(info.color, 1);
-        gfx.fillCircle(worldPos.x, worldPos.y, info.radius);
-
-        if (obj.type === NATURE.BUSH_BERRY) {
-          gfx.fillStyle(0xe03030, 1);
-          gfx.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
-          gfx.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
-          gfx.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
-        }
-
-        if (obj.type.startsWith('tree_')) {
-          gfx.fillStyle(0x6e4a20, 1);
-          gfx.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
-        }
-
-        obj.sprite = gfx;
-        this._natureSprites.push(gfx);
-      }
+      const img = this.add.image(worldPos.x, worldPos.y, key);
+      img.setDisplaySize(size.w, size.h);
+      img.setDepth(1);
+      img.setData('natureType', obj.type);
+      img.setData('origW', size.w);
+      img.setData('origH', size.h);
+      obj.sprite = img;
+      this._natureSprites.push(img);
     }
   }
 
@@ -946,50 +943,20 @@ class GameScene extends Phaser.Scene {
 
 
   createSettlerSprite(settler) {
-    const prefix = settler.gender === 'male' ? 'settler_male' : 'settler_female';
-    const frontKey = prefix + '_front';
-    const useSprite = typeof hasSpriteTexture === 'function' && hasSpriteTexture(frontKey);
-    const scale = settler.isChild ? 0.6 : 1.0;
+    const initKey = getSettlerTexture(settler);
+    const sw = settler.isChild ? 20 : 28;
+    const sh = settler.isChild ? 26 : 36;
 
-    let bodyObj;
-
-    if (useSprite) {
-      // Use extracted character sprite
-      bodyObj = this.add.image(0, 0, frontKey);
-      const sw = settler.isChild ? 20 : 28;
-      const sh = settler.isChild ? 26 : 36;
-      bodyObj.setDisplaySize(sw, sh);
-      bodyObj.setDepth(10);
-      bodyObj.setData('spritePrefix', prefix);
-      bodyObj.setData('currentTexture', frontKey);
-    } else {
-      // Fallback: colored shape
-      const color = SETTLER_COLORS[settler.gender];
-      bodyObj = this.add.graphics();
-      bodyObj.setDepth(10);
-
-      bodyObj.fillStyle(color, 1);
-      bodyObj.fillRoundedRect(-8, -6, 16, 20, 3);
-
-      bodyObj.fillStyle(0xf0c8a0, 1);
-      bodyObj.fillCircle(0, -10, 7);
-
-      const hairColor = settler.gender === 'male' ? 0x5a3a1a : 0x6a3020;
-      bodyObj.fillStyle(hairColor, 1);
-      bodyObj.slice(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
-      bodyObj.fillPath();
-
-      if (settler.isChild) {
-        bodyObj.setScale(scale);
-      }
-    }
+    const bodyObj = this.add.image(0, 0, initKey);
+    bodyObj.setDisplaySize(sw, sh);
+    bodyObj.setDepth(10);
+    bodyObj.setData('currentTexture', initKey);
 
     const container = this.add.container(settler.x, settler.y, [bodyObj]);
     container.setDepth(10);
     container.setSize(24, 32);
     container.setInteractive();
     container.setData('bodyObj', bodyObj);
-    container.setData('useSprite', useSprite);
 
     // Name label
     const nameText = this.add.text(0, -22, settler.name, {
@@ -1001,7 +968,7 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 1);
     container.add(nameText);
 
-    // Activity label (below name)
+    // Activity label
     const activityText = this.add.text(0, -10, '', {
       fontFamily: 'VT323',
       fontSize: '11px',
@@ -1019,7 +986,6 @@ class GameScene extends Phaser.Scene {
     this._settlerSprites[settler.id] = container;
     settler.sprite = container;
 
-    // Click to select
     container.on('pointerdown', (pointer) => {
       if (dist(this._dragStart.x, this._dragStart.y, pointer.x, pointer.y) < 8) {
         showSettlerInfo(settler);
@@ -1072,33 +1038,12 @@ class GameScene extends Phaser.Scene {
       container.y = settler.y;
 
       // Update sprite texture based on activity/direction
-      if (container.getData('useSprite')) {
-        const bodyObj = container.getData('bodyObj');
-        if (bodyObj) {
-          const prefix = bodyObj.getData('spritePrefix');
-          const act = settler.currentActivity;
-          let desiredKey = prefix + '_front';
-
-          if (act === 'chopping') desiredKey = prefix + '_chop';
-          else if (act === 'mining') desiredKey = prefix + '_mine';
-          else if (act === 'foraging') desiredKey = prefix + (settler.gender === 'female' ? '_forage' : '_front');
-          else if (act === 'building') desiredKey = prefix + (settler.gender === 'female' ? '_build' : '_carry');
-          else if (act === 'sleeping' || act === 'knockedOut') desiredKey = prefix + '_sleep';
-          else if (act === 'carrying' || act === 'crafting') desiredKey = prefix + '_carry';
-          else if (settler.direction) {
-            // Use directional sprite based on movement
-            if (settler.direction === 'up') desiredKey = prefix + '_back';
-            else if (settler.direction === 'down') desiredKey = prefix + '_front';
-            else if (settler.direction === 'left') desiredKey = prefix + '_left';
-            else if (settler.direction === 'right') desiredKey = prefix + '_right';
-          }
-
-          // Only swap if texture changed and exists
-          if (bodyObj.getData('currentTexture') !== desiredKey &&
-              typeof hasSpriteTexture === 'function' && hasSpriteTexture(desiredKey)) {
-            bodyObj.setTexture(desiredKey);
-            bodyObj.setData('currentTexture', desiredKey);
-          }
+      const bodyObj = container.getData('bodyObj');
+      if (bodyObj) {
+        const desiredKey = getSettlerTexture(settler);
+        if (bodyObj.getData('currentTexture') !== desiredKey) {
+          bodyObj.setTexture(desiredKey);
+          bodyObj.setData('currentTexture', desiredKey);
         }
       }
 
@@ -1127,93 +1072,30 @@ class GameScene extends Phaser.Scene {
     for (const obj of _state.natureObjects) {
       if (!obj.sprite) continue;
 
-      const isImage = obj.sprite.type === 'Image';
-
       if (obj.depleted && !obj._visualDepleted) {
         obj._visualDepleted = true;
 
-        if (isImage) {
-          // Image sprite: swap to stump texture or hide
-          if (obj.type.startsWith('tree_')) {
-            if (typeof hasSpriteTexture === 'function' && hasSpriteTexture('stump')) {
-              obj.sprite.setTexture('stump');
-              obj.sprite.setDisplaySize(32, 28);
-            } else {
-              obj.sprite.setVisible(false);
-            }
-          } else if (obj.type === NATURE.BUSH_BERRY) {
-            // Dim the bush to show no berries
-            obj.sprite.setTint(0x669966);
-          } else {
-            obj.sprite.setVisible(false);
-          }
+        if (obj.type.startsWith('tree_')) {
+          // Swap depleted tree to stump texture
+          obj.sprite.setTexture('stump');
+          obj.sprite.setDisplaySize(32, 28);
+        } else if (obj.type === NATURE.BUSH_BERRY) {
+          // Darken berry bush to show it's empty
+          obj.sprite.setTint(0x666666);
         } else {
-          // Graphics fallback
-          const info = NATURE_COLORS[obj.type];
-          const worldPos = tileToWorld(obj.col, obj.row);
-          obj.sprite.clear();
-
-          if (obj.type.startsWith('tree_')) {
-            obj.sprite.fillStyle(0x000000, 0.2);
-            obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, 6);
-            obj.sprite.fillStyle(0x7a5a28, 1);
-            obj.sprite.fillCircle(worldPos.x, worldPos.y, 6);
-          } else if (obj.type === NATURE.BUSH_BERRY) {
-            obj.sprite.fillStyle(0x000000, 0.2);
-            obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-            obj.sprite.fillStyle(0x3a7a30, 1);
-            obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
-          } else {
-            obj.sprite.setVisible(false);
-          }
+          obj.sprite.setVisible(false);
         }
       } else if (!obj.depleted && obj._visualDepleted) {
         obj._visualDepleted = false;
 
-        if (isImage) {
-          // Restore original texture
-          const natureType = obj.sprite.getData('natureType') || obj.type;
-          const spriteKey = natureType; // sprite key matches nature type string
-          if (typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey)) {
-            obj.sprite.setTexture(spriteKey);
-            obj.sprite.clearTint();
-            // Restore original display size
-            const sizes = {
-              tree_small: [48, 56], tree_large: [56, 64], tree_pine: [48, 56],
-              tree_autumn: [48, 56], rock_small: [32, 28], rock_large: [44, 36],
-              iron_ore: [36, 32], bush_berry: [36, 32], bush_shrub: [36, 32],
-              tall_grass: [28, 32],
-            };
-            const sz = sizes[spriteKey] || [48, 48];
-            obj.sprite.setDisplaySize(sz[0], sz[1]);
-          }
-          obj.sprite.setVisible(true);
-        } else {
-          // Graphics fallback
-          const info = NATURE_COLORS[obj.type];
-          if (!info) continue;
-          const worldPos = tileToWorld(obj.col, obj.row);
-
-          obj.sprite.clear();
-          obj.sprite.setVisible(true);
-
-          obj.sprite.fillStyle(0x000000, 0.2);
-          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
-          obj.sprite.fillStyle(info.color, 1);
-          obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
-
-          if (obj.type === NATURE.BUSH_BERRY) {
-            obj.sprite.fillStyle(0xe03030, 1);
-            obj.sprite.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
-            obj.sprite.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
-            obj.sprite.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
-          }
-
-          if (obj.type.startsWith('tree_')) {
-            obj.sprite.fillStyle(0x6e4a20, 1);
-            obj.sprite.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
-          }
-        }
+        // Restore original texture and size
+        const key = obj.sprite.getData('natureType') || obj.type;
+        obj.sprite.setTexture(key);
+        obj.sprite.clearTint();
+        const origW = obj.sprite.getData('origW') || 48;
+        const origH = obj.sprite.getData('origH') || 48;
+        obj.sprite.setDisplaySize(origW, origH);
+        obj.sprite.setVisible(true);
       }
     }
   }
@@ -1239,9 +1121,8 @@ class GameScene extends Phaser.Scene {
 
     // Check if this building type has sprite phases (hut/house only)
     const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
-    const useSprite = spriteKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey);
 
-    if (useSprite) {
+    if (spriteKey) {
       const displayW = building.type === BUILDING.HOUSE ? 112 : 80;
       const displayH = building.type === BUILDING.HOUSE ? 112 : 80;
       const img = this.add.image(x + w / 2, y + h / 2, spriteKey);
@@ -1322,7 +1203,7 @@ class GameScene extends Phaser.Scene {
         if (obj.getData('isSprite')) {
           // Sprite-based (hut/house): swap texture
           const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
-          if (spriteKey && typeof hasSpriteTexture === 'function' && hasSpriteTexture(spriteKey)) {
+          if (spriteKey) {
             obj.setTexture(spriteKey);
           }
           obj.setData('phase', building.phase);
