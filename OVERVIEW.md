@@ -2,8 +2,8 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.1
-Last updated: April 2, 2026 (Central Time)
+**Current version:** v0.2
+Last updated: April 3, 2026 (Central Time)
 
 ---
 
@@ -20,10 +20,10 @@ Last updated: April 2, 2026 (Central Time)
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
 | `js/pathfinding.js` | EasyStar.js integration. `initPathfinding()` builds walkability grid from tile map. `findPath()` returns synchronous A* path. `findNearestWalkable()` for fallback targeting. |
-| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Phase 1 AI is random wandering. |
+| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: EAT (hunger < 30) → GATHER (lowest resource) → IDLE (wander). Settlers harvest nature objects over time and deposit resources into stockpile. |
 | `js/buildings.js` | Stub — Phase 3. |
 | `js/crafting.js` | Stub — Phase 3. |
-| `js/resources.js` | Stub — Phase 2. |
+| `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. |
 | `js/enemies.js` | Stub — Phase 5. |
 | `js/combat.js` | Stub — Phase 5. |
 | `js/dayNight.js` | Stub — Phase 4. |
@@ -53,9 +53,15 @@ Last updated: April 2, 2026 (Central Time)
 
 ### Settlers
 **Lives in:** `characters.js`
-**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Phase 1 AI is random wandering.
-**Connects to:** `pathfinding.js` (path requests), `constants.js` (names, personalities, stats), `state.js` (settler array)
-**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `moveSettlerAlongPath()`
+**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry (stockpile or forage), GATHER the most-needed resource, or IDLE wander. Settlers path to nature objects, harvest them over time, and deposit resources into the community stockpile.
+**Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts)
+**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `moveSettlerAlongPath()`
+
+### Resource Gathering
+**Lives in:** `resources.js`
+**What it does:** Provides resource search and harvesting logic. Finds nearest harvestable nature objects by resource type or by most-needed resource. Harvests objects over time based on settler strength and tool power. Manages nature object depletion and regrowth timers.
+**Connects to:** `state.js` (nature objects, resource counts), `constants.js` (HARVESTABLE definitions)
+**Key functions:** `findNearestResource()`, `findNearestAnyResource()`, `harvestObject()`, `updateNatureObjects()`
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
@@ -96,7 +102,8 @@ playerActions.js → save.js → ui.js → events.js → init.js
 
 ## Notes
 
-- Phase 1 uses colored shapes as placeholder graphics. AI-generated spritesheet assets exist in `assets/sprites/` but need to be sliced into individual frames before use.
+- Uses colored shapes as placeholder graphics. AI-generated spritesheet assets exist in `assets/sprites/` but need to be sliced into individual frames before use.
 - EasyStar.js runs in synchronous mode — no async path callbacks needed.
+- Depleted nature objects show visual changes: trees become stumps, rocks/iron hide, berry bushes lose berries. Regrowable objects restore after their timer.
 - All Phaser visual objects are created in GameScene. Data systems manage state only.
 - The project follows the same session workflow as Tech Warrior Online (read CLAUDE.md → OVERVIEW.md → work → update OVERVIEW.md → increment version).
