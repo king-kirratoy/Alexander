@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alexander</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+
+  <!-- Styles: base first, then features -->
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/hud.css" />
+  <link rel="stylesheet" href="css/menus.css" />
+
+  <!-- Phaser 3.60.0 -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+
+  <!-- EasyStar.js pathfinding -->
+  <script src="https://cdn.jsdelivr.net/npm/easystarjs@0.4.4/src/easystar.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══ Game Container ═══ -->
+  <div id="gameContainer"></div>
+
+  <!-- ═══ HUD Overlay ═══ -->
+  <div id="hud" class="hud hidden">
+    <!-- ── Resource Bar (top-left) ── -->
+    <div id="hudResources" class="hud-resources">
+      <div class="hud-resource" data-resource="wood">
+        <div class="hud-resource-icon hud-icon-wood"></div>
+        <span id="hudWood">0</span>
+      </div>
+      <div class="hud-resource" data-resource="stone">
+        <div class="hud-resource-icon hud-icon-stone"></div>
+        <span id="hudStone">0</span>
+      </div>
+      <div class="hud-resource" data-resource="food">
+        <div class="hud-resource-icon hud-icon-food"></div>
+        <span id="hudFood">0</span>
+      </div>
+      <div class="hud-resource" data-resource="iron">
+        <div class="hud-resource-icon hud-icon-iron"></div>
+        <span id="hudIron">0</span>
+      </div>
+    </div>
+
+    <!-- ── Population & Day (top-right) ── -->
+    <div id="hudStatus" class="hud-status">
+      <div class="hud-status-item">
+        <div class="hud-resource-icon hud-icon-pop"></div>
+        <span id="hudPopulation">0</span>
+      </div>
+      <div class="hud-status-item">
+        <div class="hud-resource-icon hud-icon-day"></div>
+        <span id="hudDay">Day 1</span>
+      </div>
+    </div>
+
+    <!-- ── Menu Button (top-right corner) ── -->
+    <button id="hudMenuBtn" class="hud-menu-btn" title="Menu">&#9776;</button>
+
+    <!-- ── Action Menu (bottom-right) ── -->
+    <div id="hudActions" class="hud-actions">
+      <button id="actionToggle" class="action-toggle" title="Actions">+</button>
+      <div id="actionPanel" class="action-panel hidden">
+        <button class="action-btn" data-action="dropWood" title="Drop Wood">
+          <div class="hud-resource-icon hud-icon-wood"></div>
+        </button>
+        <button class="action-btn" data-action="dropStone" title="Drop Stone">
+          <div class="hud-resource-icon hud-icon-stone"></div>
+        </button>
+        <button class="action-btn" data-action="dropFood" title="Drop Food">
+          <div class="hud-resource-icon hud-icon-food"></div>
+        </button>
+        <button class="action-btn" data-action="dropIron" title="Drop Iron">
+          <div class="hud-resource-icon hud-icon-iron"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Settler Info Panel ═══ -->
+  <div id="settlerInfo" class="settler-info hidden">
+    <div class="settler-info-header">
+      <span id="settlerName" class="settler-name"></span>
+      <button id="settlerInfoClose" class="settler-info-close">&times;</button>
+    </div>
+    <div class="settler-info-body">
+      <div class="settler-stat">
+        <span class="stat-label">Personality:</span>
+        <span id="settlerPersonality" class="stat-value"></span>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Role:</span>
+        <span id="settlerRole" class="stat-value"></span>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Health:</span>
+        <div class="stat-bar">
+          <div id="settlerHealthBar" class="stat-bar-fill health-bar"></div>
+        </div>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Hunger:</span>
+        <div class="stat-bar">
+          <div id="settlerHungerBar" class="stat-bar-fill hunger-bar"></div>
+        </div>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Activity:</span>
+        <span id="settlerActivity" class="stat-value"></span>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Lives:</span>
+        <span id="settlerLives" class="stat-value"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ In-Game Menu Overlay ═══ -->
+  <div id="gameMenu" class="game-menu hidden">
+    <div class="game-menu-panel">
+      <h2 class="game-menu-title">Menu</h2>
+      <button id="menuResume" class="menu-btn">Resume</button>
+      <button id="menuSettings" class="menu-btn">Settings</button>
+      <button id="menuSaveQuit" class="menu-btn menu-btn-danger">Save &amp; Exit</button>
+    </div>
+  </div>
+
+  <!-- ═══ Main Menu ═══ -->
+  <div id="mainMenu" class="main-menu">
+    <div class="main-menu-content">
+      <h1 class="main-menu-title">ALEXANDER</h1>
+      <p class="main-menu-subtitle">A Living Settlement</p>
+      <div class="main-menu-login">
+        <label for="usernameInput" class="menu-label">Enter Your Name</label>
+        <input type="text" id="usernameInput" class="menu-input" placeholder="Username" maxlength="24" autocomplete="off" />
+      </div>
+      <div class="main-menu-buttons">
+        <button id="btnNewGame" class="menu-btn menu-btn-primary" disabled>New Game</button>
+        <button id="btnContinue" class="menu-btn" disabled>Continue</button>
+      </div>
+      <p id="mainMenuVersion" class="main-menu-version">v0.1</p>
+    </div>
+  </div>
+
+  <!-- JS: load order matters — foundation first, init last -->
+  <script src="js/constants.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/pathfinding.js"></script>
+  <script src="js/characters.js"></script>
+  <script src="js/buildings.js"></script>
+  <script src="js/crafting.js"></script>
+  <script src="js/resources.js"></script>
+  <script src="js/enemies.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/dayNight.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/playerActions.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/init.js"></script>
+
+</body>
+</html>
