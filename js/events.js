@@ -69,8 +69,10 @@ function initEvents() {
 
   document.querySelectorAll('.action-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      _state.activeAction = btn.dataset.action;
-      // TODO: change cursor, wait for map click
+      if (typeof playSound === 'function') playSound('uiClick');
+      if (typeof startDropAction === 'function') {
+        startDropAction(btn.dataset.action);
+      }
     });
   });
 
@@ -79,20 +81,38 @@ function initEvents() {
     hideSettlerInfo();
   });
 
+  // ── Right-click to cancel drop action ──────────────────────
+  document.addEventListener('contextmenu', (e) => {
+    if (_state.activeAction) {
+      e.preventDefault();
+      if (typeof cancelDropAction === 'function') cancelDropAction();
+    }
+  });
+
+  // ── Tooltip follows cursor ────────────────────────────────
+  document.addEventListener('mousemove', (e) => {
+    if (typeof moveDropTooltip === 'function') {
+      moveDropTooltip(e.clientX, e.clientY);
+    }
+  });
+
   // ── Keyboard Shortcuts ─────────────────────────────────────
   document.addEventListener('keydown', (e) => {
     if (!_state.gameRunning) return;
 
+    if (e.key === 'f' || e.key === 'F') {
+      if (typeof toggleFollowCamera === 'function') {
+        toggleFollowCamera();
+      }
+    }
+
     if (e.key === 'Escape') {
       if (_state.menuOpen) {
         toggleGameMenu();
+      } else if (_state.activeAction) {
+        if (typeof cancelDropAction === 'function') cancelDropAction();
       } else if (_state.selectedSettler !== null) {
         hideSettlerInfo();
-      } else if (_state.activeAction) {
-        _state.activeAction = null;
-        const panel = document.getElementById('actionPanel');
-        panel.classList.add('hidden');
-        document.getElementById('actionToggle').classList.remove('active');
       }
     }
   });

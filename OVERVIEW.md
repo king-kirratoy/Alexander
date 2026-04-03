@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.7
+**Current version:** v0.8
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -28,12 +28,12 @@ Last updated: April 3, 2026 (Central Time)
 | `js/combat.js` | Combat system. `processSettlerAttack()` (1s cooldown, strength+weapon damage) and `processEnemyAttack()` (1.5s cooldown). `checkSettlerKnockout()` handles knockout (lives>1) vs permadeath (lives<=1). `processRescue()` revives knocked-out settlers over 3s. `updateCombat()` runs per-frame combat loop. `destroyBuilding()` removes buildings at 0 hp. |
 | `js/dayNight.js` | Day/night cycle system. Tracks cycleTime and currentPhase (day/dusk/night/dawn). Calculates phase from cycle position using DAY_PHASE_RATIOS. Provides getDaylightTint() for overlay rendering and phase query helpers (isNight, isDusk, isDawn). |
 | `js/audio.js` | Procedural audio system using Web Audio API. Master volume control, sound effect generation (14 effects: chop, mine, forage, build, craft, eat, hit, enemyDeath, settlerHurt, settlerDeath, buildComplete, birthChime, uiClick, notification), ambient sound layers (day/dusk/night/dawn) with crossfade transitions, throttle system for activity sounds. |
-| `js/camera.js` | Stub — camera controls are in GameScene for now. |
-| `js/playerActions.js` | Stub — Phase 8. |
+| `js/camera.js` | Follow-camera system. `initCamera()` stores scene reference. `toggleFollowCamera()` toggles follow mode for the selected settler. `updateFollowCamera()` smoothly lerps camera toward followed settler each frame. `stopFollowCamera()` cancels follow. Shows/hides a "Following [Name]" HUD indicator. Follow cancelled by: F key, clicking empty ground, dragging camera, settler death. |
+| `js/playerActions.js` | Resource dropping system. `initPlayerActions()` stores scene reference. `startDropAction()` activates drop mode with crosshair cursor and button highlight. `executeDropAction()` places resources at clicked world position (10 wood/stone/food, 5 iron) with visual feedback and sound. `cancelDropAction()` resets state. Drop mode stays active for multiple drops; cancelled by Escape/right-click/panel close. Includes cursor tooltip. |
 | `js/save.js` | Stub — Phase 9. |
-| `js/ui.js` | HUD update (`updateHUD` syncs resource/population counts), settler info panel show/hide, main menu show/hide, in-game menu toggle, action panel toggle. |
+| `js/ui.js` | HUD update (`updateHUD` syncs resource/population counts), settler info panel show/hide with real-time updates (equipped tool/weapon, child age progress, red heart styling), main menu show/hide, in-game menu toggle, action panel toggle. |
 | `js/events.js` | All DOM event listeners: main menu username input/buttons, HUD menu button, in-game menu buttons, action panel toggle, settler info close, Escape key handler. |
-| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system). Handles phase transitions including day-change events for population growth. `startNewGame()` and `stopGame()` lifecycle. `bootApp()` entry point wires events and shows main menu. |
+| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system, minimap with click-to-navigate). Handles phase transitions including day-change events for population growth. Integrates player actions (drop mode) and follow camera. `startNewGame()` and `stopGame()` lifecycle. `bootApp()` entry point wires events and shows main menu. |
 
 ---
 
@@ -97,13 +97,31 @@ Last updated: April 3, 2026 (Central Time)
 **Lives in:** `init.js` (GameScene class)
 **What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), buildings as colored rectangles with opacity based on build phase, settlers as colored shapes with name/activity labels (children at 60% scale). Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
 **Connects to:** All data systems via `_state`
-**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`
+**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`, `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
+
+### Player Actions
+**Lives in:** `playerActions.js`, integrated via `events.js`, `init.js`
+**What it does:** Allows the player to drop resources onto the map as a "god" ability. Clicking an action button enters drop mode (crosshair cursor, highlighted button, tooltip). Clicking on a walkable tile adds resources to the stockpile (10 wood/stone/food, 5 iron) with a visual fade-out indicator and notification sound. Drop mode persists for multiple drops; cancelled by Escape, right-click, or closing the action panel.
+**Connects to:** `state.js` (activeAction, resources), `utils.js` (worldToTile, isWalkable), `audio.js` (notification sound)
+**Key functions:** `initPlayerActions()`, `startDropAction()`, `executeDropAction()`, `cancelDropAction()`, `moveDropTooltip()`
+
+### Follow Camera
+**Lives in:** `camera.js`, integrated via `events.js`, `init.js`
+**What it does:** Allows the player to follow a selected settler with the camera. Press F to toggle follow mode. Camera smoothly lerps toward the followed settler each frame. Follow is cancelled by pressing F again, clicking empty ground, dragging the camera, clicking the minimap, or if the settler dies.
+**Connects to:** `state.js` (cameraFollowing, selectedSettler), `characters.js` (getSettlerById)
+**Key functions:** `initCamera()`, `toggleFollowCamera()`, `stopFollowCamera()`, `updateFollowCamera()`
+
+### Minimap
+**Lives in:** `init.js` (GameScene methods)
+**What it does:** Displays a 180×135 pixel minimap in the bottom-left corner showing terrain colors, building footprints, settler dots (green), and enemy dots (red, during night). A white rectangle indicates the current camera viewport. Updates content every 500ms; viewport rectangle updates every frame. Clicking on the minimap navigates the camera to that world position.
+**Connects to:** `state.js` (tileMap, buildings, settlers, enemies), `constants.js` (tile/building colors, world size)
+**Key functions:** `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
 
 ### UI
 **Lives in:** `ui.js`, `events.js`
-**What it does:** Updates HUD resource counts, manages settler info panel, toggles menus and action panel.
-**Connects to:** `state.js` (reads data for display), `characters.js` (settler lookup)
-**Key functions:** `updateHUD()`, `showSettlerInfo()`, `hideSettlerInfo()`, `toggleGameMenu()`, `toggleActionPanel()`
+**What it does:** Updates HUD resource counts, manages settler info panel (with equipped tool/weapon, child age progress, red heart styling), toggles menus and action panel. Settler info updates in real-time every 500ms.
+**Connects to:** `state.js` (reads data for display), `characters.js` (settler lookup), `playerActions.js` (cancelDropAction on panel close)
+**Key functions:** `updateHUD()`, `showSettlerInfo()`, `hideSettlerInfo()`, `updateSettlerInfoPanel()`, `toggleGameMenu()`, `toggleActionPanel()`
 
 ---
 
