@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.9
+**Current version:** v1.0
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -161,3 +161,10 @@ playerActions.js → save.js → ui.js → events.js → init.js
 - Depleted nature objects show visual changes: trees become stumps, rocks/iron hide, berry bushes lose berries. Regrowable objects restore after their timer.
 - All Phaser visual objects are created in GameScene. Data systems manage state only.
 - The project follows the same session workflow as Tech Warrior Online (read CLAUDE.md → OVERVIEW.md → work → update OVERVIEW.md → increment version).
+- **v1.0 Polish Pass (Phase 10):**
+  - AI balance: staggered evaluation cooldowns (1-3s), resource gathering biased toward least-staffed type, 20-tile distance cap, eating at hunger < 40, building doesn't interrupt mid-harvest, children wander near settlement center.
+  - Game balance: tuned gathering speeds (small tree ~5s bare → ~1.5s iron axe), reduced early building costs, explicit construction times (campfire 10s, hut 20s, house 30s), hunger drain ~70% of a day cycle, graduated enemy scaling (night 1-3 very easy), first child around day 5-8.
+  - Visual feedback: settler health bars (visible when hurt), floating "+N Resource" text on deposits, building progress bars, enemy health bars, phase notifications (dusk/night/dawn), day counter display.
+  - Loading screen: "ALEXANDER / Generating world..." overlay with animated dots, shown during world generation.
+  - Performance: floating text object pool (20), off-screen nature sprite culling (500ms), path caching for settlers, round-robin AI updates for 30+ population.
+  - DEBUG constant (false) in constants.js; informational logs wrapped in DEBUG checks.

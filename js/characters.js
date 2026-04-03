@@ -112,12 +112,19 @@ function spawnStartingSettlers() {
 
 /**
  * Update all settlers (called each frame).
+ * If population exceeds 30, only run AI for 15 settlers per frame (round-robin)
+ * to prevent frame drops. Movement/hunger always updates for all settlers.
  */
 function updateSettlers(delta) {
-  for (const settler of _state.settlers) {
+  const settlers = _state.settlers;
+  const useRoundRobin = settlers.length > 30;
+  const aiPerFrame = 15;
+
+  for (let i = 0; i < settlers.length; i++) {
+    const settler = settlers[i];
     if (settler.isKnockedOut) continue;
 
-    // Drain hunger (75% reduced when sleeping)
+    // Drain hunger (75% reduced when sleeping) — always runs
     const hungerMod = settler.currentActivity === 'sleeping' ? 0.25 : 1;
     settler.hunger -= HUNGER_DRAIN_RATE * hungerMod * (delta / 1000);
     if (settler.personality.effect === 'hungerRate') {
@@ -125,27 +132,32 @@ function updateSettlers(delta) {
     }
     settler.hunger = clamp(settler.hunger, 0, settler.maxHunger);
 
-    // Starving damage
+    // Starving damage — always runs
     if (settler.hunger <= 0) {
       settler.health -= HUNGER_DAMAGE_RATE * (delta / 1000);
       settler.health = clamp(settler.health, 0, settler.maxHealth);
     } else if (settler.health < settler.maxHealth && settler.hunger > 20) {
-      // Regen when fed
       settler.health += HEALTH_REGEN_RATE * (delta / 1000);
       settler.health = clamp(settler.health, 0, settler.maxHealth);
     }
 
-    // AI decision-making
-    updateSettlerAI(settler, delta);
+    // AI decision-making — round-robin when population is large
+    if (!useRoundRobin || (i % Math.ceil(settlers.length / aiPerFrame) === _state._aiRoundRobinFrame % Math.ceil(settlers.length / aiPerFrame))) {
+      updateSettlerAI(settler, delta);
+    }
 
-    // Move along path
+    // Move along path — always runs
     moveSettlerAlongPath(settler, delta);
 
-    // Update tile position
+    // Update tile position — always runs
     const tilePos = worldToTile(settler.x, settler.y);
     settler.col = tilePos.col;
     settler.row = tilePos.row;
   }
+
+  // Advance round-robin frame counter
+  if (!_state._aiRoundRobinFrame) _state._aiRoundRobinFrame = 0;
+  _state._aiRoundRobinFrame++;
 }
 
 
@@ -208,6 +220,9 @@ function updateSettlerAI(settler, delta) {
   // If cooldown hasn't elapsed, don't re-evaluate
   if (settler.aiCooldown > 0 && settler.currentTask) return;
 
+  // Stagger AI decisions: randomize cooldown across settlers (1000-3000ms)
+  const nextCooldown = randInt(1000, 3000);
+
   // ── Evaluate priorities ──────────────────────────────────────
 
   // Priority: FLEE (100) — unarmed settlers near enemies at night
@@ -217,7 +232,7 @@ function updateSettlerAI(settler, delta) {
       if (nearEnemy) {
         if (typeof tryFlee === 'function') {
           tryFlee(settler);
-          settler.aiCooldown = randInt(1000, 2000);
+          settler.aiCooldown = nextCooldown;
           return;
         }
       }
@@ -227,15 +242,15 @@ function updateSettlerAI(settler, delta) {
   // Priority: FIGHT (90) — armed settlers engage enemies at night (adults only)
   if (!settler.isChild && typeof isNight === 'function' && isNight() && settler.equippedWeapon) {
     if (tryFight(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
 
-  // Priority 1: EAT (hunger < 30)
-  if (settler.hunger < 30) {
+  // Priority 1: EAT (hunger < 40) — eat before getting critically hungry
+  if (settler.hunger < 40) {
     if (tryEat(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
@@ -243,7 +258,7 @@ function updateSettlerAI(settler, delta) {
   // Priority: RESCUE (60) — revive knocked-out settlers
   if (typeof findKnockedOutSettler === 'function') {
     if (tryRescue(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
@@ -251,15 +266,18 @@ function updateSettlerAI(settler, delta) {
   // Priority 2: SLEEP (70) — during dusk/night
   if (typeof isDusk === 'function' && (isDusk() || isNight())) {
     if (trySleep(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
 
   // Priority 3: BUILD (40) — only during day/dawn (adults only)
+  // Don't interrupt active gathering (let settlers finish harvesting first)
   if (!settler.isChild && typeof decideBuildPriority === 'function') {
-    if (tryBuild(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+    if (settler.gatherProgress > 0) {
+      // Mid-harvest — skip build evaluation, let gathering finish
+    } else if (tryBuild(settler)) {
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
@@ -267,12 +285,12 @@ function updateSettlerAI(settler, delta) {
   // Priority 3: GATHER (30) — children can only forage (food)
   if (settler.isChild) {
     if (tryForageChild(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   } else {
     if (tryGather(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
@@ -280,24 +298,25 @@ function updateSettlerAI(settler, delta) {
   // Priority 4: CRAFT (20) — adults only
   if (!settler.isChild && typeof decideWhatToCraft === 'function') {
     if (tryCraft(settler)) {
-      settler.aiCooldown = randInt(1000, 2000);
+      settler.aiCooldown = nextCooldown;
       return;
     }
   }
 
   // Priority 5: IDLE (wander)
   tryWander(settler);
-  settler.aiCooldown = randInt(1000, 2000);
+  settler.aiCooldown = nextCooldown;
 }
 
 
 /**
- * Try to eat — from stockpile first, then forage.
+ * Try to eat — prefer stockpile food over raw foraging.
+ * Triggers at hunger < 40 for natural-feeling eating behavior.
  * Returns true if an action was taken.
  */
 function tryEat(settler) {
-  // Try stockpile first
-  if (_state.resources.food > 0) {
+  // Prefer stockpile food (includes cooked food from campfires/farms)
+  if (_state.resources.food >= 1) {
     _state.resources.food -= 1;
     settler.hunger = clamp(settler.hunger + 40, 0, settler.maxHunger);
     settler.currentActivity = 'eating';
@@ -310,10 +329,13 @@ function tryEat(settler) {
     return true;
   }
 
-  // No stockpile food — find nearest berry bush
+  // No stockpile food — forage from nearest berry bush as fallback
   if (typeof findNearestResource === 'function') {
     const berryBush = findNearestResource(settler.col, settler.row, 'food');
     if (berryBush) {
+      // Don't walk excessively far to forage
+      const d = dist(settler.col, settler.row, berryBush.col, berryBush.row);
+      if (d > 20) return false;
       const path = findPath(settler.col, settler.row, berryBush.col, berryBush.row);
       if (path && path.length > 0) {
         settler.path = path;
@@ -333,13 +355,34 @@ function tryEat(settler) {
 
 /**
  * Try to gather the most-needed resource.
+ * Biases toward least-staffed resource type so settlers spread out.
+ * Won't walk more than 20 tiles to reach a resource.
  * Returns true if an action was taken.
  */
 function tryGather(settler) {
   if (typeof findNearestAnyResource !== 'function') return false;
 
-  const target = findNearestAnyResource(settler.col, settler.row);
+  // Count how many settlers are currently gathering each resource type
+  const gatherCounts = { wood: 0, stone: 0, food: 0, iron: 0 };
+  for (const s of _state.settlers) {
+    if (s.id === settler.id || s.isDead || s.isKnockedOut) continue;
+    if (s.currentTask && s.currentTask.type === 'gathering') {
+      const tgt = _state.natureObjects.find(o => o.id === s.currentTask.targetId);
+      if (tgt) {
+        const info = HARVESTABLE[tgt.type];
+        if (info && gatherCounts[info.resource] !== undefined) {
+          gatherCounts[info.resource]++;
+        }
+      }
+    }
+  }
+
+  const target = findNearestAnyResource(settler.col, settler.row, gatherCounts);
   if (!target) return false;
+
+  // Don't walk excessively far (>20 tiles) for resources
+  const d = dist(settler.col, settler.row, target.col, target.row);
+  if (d > 20) return false;
 
   const path = findPath(settler.col, settler.row, target.col, target.row);
   if (!path || path.length === 0) return false;
@@ -385,12 +428,21 @@ function handleGathering(settler, delta) {
   // Check if within 1 tile distance
   const d = dist(settler.col, settler.row, target.col, target.row);
   if (d > 1.5) {
-    // Not close enough yet — might need a new path
+    // Not close enough yet — only re-pathfind if we have no path or reached end
     if (!settler.path || settler.pathIndex >= settler.path.length) {
+      // Path cache: skip re-pathfind if target hasn't moved
+      if (settler._lastPathTarget &&
+          settler._lastPathTarget.col === target.col &&
+          settler._lastPathTarget.row === target.row &&
+          settler.path) {
+        clearTask(settler);
+        return false;
+      }
       const path = findPath(settler.col, settler.row, target.col, target.row);
       if (path && path.length > 0) {
         settler.path = path;
         settler.pathIndex = 0;
+        settler._lastPathTarget = { col: target.col, row: target.row };
       } else {
         clearTask(settler);
         return false;
@@ -726,6 +778,7 @@ function handleCrafting(settler, delta) {
 
 /**
  * Children can only forage berry bushes (food gathering).
+ * Won't walk more than 20 tiles away.
  * Returns true if action taken.
  */
 function tryForageChild(settler) {
@@ -733,6 +786,10 @@ function tryForageChild(settler) {
 
   const berryBush = findNearestResource(settler.col, settler.row, 'food');
   if (!berryBush) return false;
+
+  // Don't let children wander too far for food
+  const d = dist(settler.col, settler.row, berryBush.col, berryBush.row);
+  if (d > 20) return false;
 
   const path = findPath(settler.col, settler.row, berryBush.col, berryBush.row);
   if (!path || path.length === 0) return false;
@@ -765,12 +822,24 @@ function autoEquipTool(settler, natureObj) {
 
 /**
  * Wander randomly (fallback idle behavior).
+ * Children stay within 10 tiles of settlement center.
  */
 function tryWander(settler) {
   if (Math.random() < 0.3) {
-    const wanderRadius = 6;
-    const targetCol = settler.col + randInt(-wanderRadius, wanderRadius);
-    const targetRow = settler.row + randInt(-wanderRadius, wanderRadius);
+    const centerCol = Math.floor(WORLD_COLS / 2);
+    const centerRow = Math.floor(WORLD_ROWS / 2);
+
+    let targetCol, targetRow;
+
+    if (settler.isChild) {
+      // Children wander near settlement center (within 10 tiles)
+      targetCol = centerCol + randInt(-10, 10);
+      targetRow = centerRow + randInt(-10, 10);
+    } else {
+      const wanderRadius = 6;
+      targetCol = settler.col + randInt(-wanderRadius, wanderRadius);
+      targetRow = settler.row + randInt(-wanderRadius, wanderRadius);
+    }
 
     if (inBounds(targetCol, targetRow) && isWalkable(targetCol, targetRow)) {
       const path = findPath(settler.col, settler.row, targetCol, targetRow);
@@ -1147,6 +1216,7 @@ function clearTask(settler) {
   settler.currentPriority = AI_PRIORITY.IDLE;
   settler.gatherProgress = 0;
   settler.aiCooldown = 0; // re-evaluate immediately
+  settler._lastPathTarget = null; // clear path cache
 }
 
 

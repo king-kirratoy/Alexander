@@ -7,11 +7,21 @@ function createBuilding(type, col, row) {
   const def = BUILDING_DEFS[type];
   if (!def) return null;
 
-  // Calculate maxBuildWork from total cost * 10
-  let totalCost = 0;
-  for (const res in def.cost) {
-    totalCost += def.cost[res];
-  }
+  // Construction times: campfire ~10s, hut ~20s, house ~30s with one builder (strength 10)
+  // maxBuildWork = desired_seconds * base_strength(10)
+  const BUILD_TIME_OVERRIDES = {
+    [BUILDING.CAMPFIRE]: 100,    // 10s
+    [BUILDING.HUT]: 200,         // 20s
+    [BUILDING.STORAGE]: 150,     // 15s
+    [BUILDING.WORKBENCH]: 120,   // 12s
+    [BUILDING.WALL_WOOD]: 60,    // 6s
+    [BUILDING.WALL_STONE]: 80,   // 8s
+    [BUILDING.HOUSE]: 300,       // 30s
+    [BUILDING.FORGE]: 250,       // 25s
+    [BUILDING.FARM]: 150,        // 15s
+    [BUILDING.WATCHTOWER]: 200,  // 20s
+    [BUILDING.GATE]: 80,         // 8s
+  };
 
   const building = {
     id: _state.nextBuildingId++,
@@ -20,7 +30,7 @@ function createBuilding(type, col, row) {
     row: row,
     phase: BUILD_PHASE.FOUNDATION,
     buildProgress: 0,
-    maxBuildWork: totalCost * 10,
+    maxBuildWork: BUILD_TIME_OVERRIDES[type] || 150,
     hp: def.hp,
     maxHp: def.hp,
     variant: randInt(0, 3),

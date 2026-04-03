@@ -5,27 +5,30 @@
  * Called once per night transition, not every frame.
  */
 function spawnEnemies() {
-  const pop = _state.settlers.length;
+  const pop = _state.settlers.filter(s => !s.isDead).length;
   if (pop < 3) return;
 
-  // Determine enemy count based on population brackets
+  // Night 1-3: very easy (1-2 enemies). By night 10: challenging but manageable.
+  // Scale with both day number and population.
+  const day = _state.dayNumber || 1;
   let minCount, maxCount;
-  if (pop <= 5) {
-    minCount = 1; maxCount = 3;
-  } else if (pop <= 10) {
-    minCount = 2; maxCount = 5;
-  } else if (pop <= 20) {
-    minCount = 4; maxCount = 8;
+  if (day <= 3) {
+    minCount = 1; maxCount = 2; // Very easy early nights
+  } else if (day <= 6) {
+    minCount = 2; maxCount = 3;
+  } else if (day <= 10) {
+    minCount = 2; maxCount = Math.min(5, 2 + Math.floor(pop / 4));
   } else {
-    minCount = 6; maxCount = 12;
+    // Late game scales with population
+    minCount = 3; maxCount = Math.min(12, 3 + Math.floor(pop / 3));
   }
 
   const count = randInt(minCount, maxCount);
 
   // Determine available enemy types based on day number
   const availableTypes = [ENEMY_TYPE.ZOMBIE];
-  if (_state.dayNumber > 5) availableTypes.push(ENEMY_TYPE.SKELETON);
-  if (_state.dayNumber > 10) availableTypes.push(ENEMY_TYPE.WOLF);
+  if (day >= 5) availableTypes.push(ENEMY_TYPE.SKELETON);
+  if (day >= 10) availableTypes.push(ENEMY_TYPE.WOLF);
 
   for (let i = 0; i < count; i++) {
     const type = randPick(availableTypes);

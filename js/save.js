@@ -28,7 +28,7 @@ function initSupabase() {
     return;
   }
   _saveEnabled = true;
-  console.log('Supabase save system initialized.');
+  if (DEBUG) console.log('Supabase save system initialized.');
 }
 
 // ── Check for existing save ──────────────────────────────────
@@ -84,7 +84,7 @@ async function saveGame() {
       console.error('saveGame failed:', resp.status, resp.statusText);
       return false;
     }
-    console.log('Game saved successfully.');
+    if (DEBUG) console.log('Game saved successfully.');
     return true;
   } catch (err) {
     console.error('saveGame error:', err);
@@ -101,7 +101,7 @@ function loadGame(saveData) {
   }
   try {
     deserializeState(saveData.save_data);
-    console.log('Game loaded successfully.');
+    if (DEBUG) console.log('Game loaded successfully.');
     return true;
   } catch (err) {
     console.error('loadGame error:', err);
@@ -125,7 +125,7 @@ async function deleteSave(username) {
       console.error('deleteSave failed:', resp.status, resp.statusText);
       return false;
     }
-    console.log('Save deleted for:', username);
+    if (DEBUG) console.log('Save deleted for:', username);
     return true;
   } catch (err) {
     console.error('deleteSave error:', err);

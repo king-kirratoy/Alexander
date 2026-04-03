@@ -37,18 +37,31 @@ function findNearestResource(col, row, resourceType) {
 
 
 /**
- * Find the nearest harvestable object of whichever resource is most needed
- * (lowest count in _state.resources). Skips fiber since it's not harvestable.
+ * Find the nearest harvestable object of whichever resource is most needed.
+ * Factors in both stockpile levels and how many settlers are already gathering
+ * each type, so settlers spread across different resources instead of clustering.
+ * Skips fiber since it's not harvestable.
  */
-function findNearestAnyResource(col, row) {
+function findNearestAnyResource(col, row, gatherCounts) {
   const gatherableTypes = ['wood', 'stone', 'food', 'iron'];
 
-  // Sort by lowest stockpile count
-  const sorted = gatherableTypes.slice().sort((a, b) => _state.resources[a] - _state.resources[b]);
+  // Score each resource type: lower = more needed
+  // Combine stockpile count with active gatherer count as a penalty
+  const counts = gatherCounts || {};
+  const scored = gatherableTypes.map(type => {
+    const stockpile = _state.resources[type] || 0;
+    const gatherers = counts[type] || 0;
+    // Penalize types that 2+ settlers are already gathering
+    const gathererPenalty = gatherers >= 2 ? gatherers * 15 : 0;
+    return { type, score: stockpile + gathererPenalty };
+  });
+
+  // Sort by lowest score (most needed)
+  scored.sort((a, b) => a.score - b.score);
 
   // Try each resource type starting from most needed
-  for (const resType of sorted) {
-    const obj = findNearestResource(col, row, resType);
+  for (const entry of scored) {
+    const obj = findNearestResource(col, row, entry.type);
     if (obj) return obj;
   }
 
@@ -69,8 +82,9 @@ function harvestObject(natureObj, settler, delta) {
   let harvestPower = settler.strength;
 
   // Tool bonus: if settler has the right tool, multiply power
+  // Multiplier of 8 gives: wooden axe ~3s, stone axe ~2s, iron axe ~1.5s on small tree
   if (settler.equippedTool && settler.equippedTool.subtype === info.tool) {
-    harvestPower += settler.equippedTool.power * 5;
+    harvestPower += settler.equippedTool.power * 8;
   }
 
   // Personality: workSpeed affects harvest rate
@@ -91,6 +105,16 @@ function harvestObject(natureObj, settler, delta) {
 
     // Add resources to stockpile
     _state.resources[info.resource] = (_state.resources[info.resource] || 0) + info.amount;
+
+    // Queue floating text for visual feedback
+    if (!_state._floatingTextQueue) _state._floatingTextQueue = [];
+    const worldPos = tileToWorld(natureObj.col, natureObj.row);
+    _state._floatingTextQueue.push({
+      x: worldPos.x,
+      y: worldPos.y,
+      resource: info.resource,
+      amount: info.amount,
+    });
 
     // Set regrow timer if applicable
     if (info.regrows && info.regrowTime) {

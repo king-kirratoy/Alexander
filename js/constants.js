@@ -2,7 +2,8 @@
 
 window.AX = {};
 
-const GAME_VERSION = 'v0.9';
+const GAME_VERSION = 'v1.0';
+const DEBUG = false; // Set to true for diagnostic logging
 
 // ── World ──────────────────────────────────────────────────────
 const TILE_SIZE = 64;
@@ -48,14 +49,16 @@ const NATURE = {
 };
 
 const HARVESTABLE = {
-  [NATURE.TREE_SMALL]: { resource: 'wood', amount: 3, hp: 30, tool: 'axe', regrows: true, regrowTime: 180000 },
-  [NATURE.TREE_LARGE]: { resource: 'wood', amount: 5, hp: 50, tool: 'axe', regrows: true, regrowTime: 300000 },
-  [NATURE.TREE_PINE]: { resource: 'wood', amount: 4, hp: 40, tool: 'axe', regrows: true, regrowTime: 240000 },
-  [NATURE.TREE_AUTUMN]: { resource: 'wood', amount: 3, hp: 30, tool: 'axe', regrows: true, regrowTime: 180000 },
-  [NATURE.ROCK_SMALL]: { resource: 'stone', amount: 2, hp: 40, tool: 'pickaxe', regrows: false },
-  [NATURE.ROCK_LARGE]: { resource: 'stone', amount: 5, hp: 80, tool: 'pickaxe', regrows: false },
-  [NATURE.IRON_ORE]: { resource: 'iron', amount: 3, hp: 60, tool: 'pickaxe', regrows: false },
-  [NATURE.BUSH_BERRY]: { resource: 'food', amount: 2, hp: 10, tool: null, regrows: true, regrowTime: 120000 },
+  // Gathering speeds tuned so: small tree ~5s bare, ~3s wooden axe, ~2s stone axe, ~1.5s iron axe
+  // Mining slightly slower. Berry foraging fast (~2s).
+  [NATURE.TREE_SMALL]: { resource: 'wood', amount: 3, hp: 50, tool: 'axe', regrows: true, regrowTime: 180000 },
+  [NATURE.TREE_LARGE]: { resource: 'wood', amount: 5, hp: 80, tool: 'axe', regrows: true, regrowTime: 300000 },
+  [NATURE.TREE_PINE]: { resource: 'wood', amount: 4, hp: 65, tool: 'axe', regrows: true, regrowTime: 240000 },
+  [NATURE.TREE_AUTUMN]: { resource: 'wood', amount: 3, hp: 50, tool: 'axe', regrows: true, regrowTime: 180000 },
+  [NATURE.ROCK_SMALL]: { resource: 'stone', amount: 2, hp: 60, tool: 'pickaxe', regrows: false },
+  [NATURE.ROCK_LARGE]: { resource: 'stone', amount: 5, hp: 100, tool: 'pickaxe', regrows: false },
+  [NATURE.IRON_ORE]: { resource: 'iron', amount: 3, hp: 80, tool: 'pickaxe', regrows: false },
+  [NATURE.BUSH_BERRY]: { resource: 'food', amount: 2, hp: 20, tool: null, regrows: true, regrowTime: 120000 },
 };
 
 // ── Resource Types ─────────────────────────────────────────────
@@ -123,7 +126,7 @@ const SETTLER_BASE_STATS = {
   lives: 2,
 };
 
-const HUNGER_DRAIN_RATE = 0.15; // per second
+const HUNGER_DRAIN_RATE = 0.18; // per second — settler can work ~70% of a day cycle before needing food
 const HUNGER_DAMAGE_RATE = 0.5; // HP per second when starving
 const HEALTH_REGEN_RATE = 0.2; // per second when fed
 
@@ -163,7 +166,7 @@ const BUILDING = {
 const BUILDING_DEFS = {
   [BUILDING.CAMPFIRE]: {
     name: 'Campfire',
-    cost: { wood: 5, stone: 2 },
+    cost: { wood: 3, stone: 1 },  // Affordable in first 1-2 minutes
     size: { w: 1, h: 1 },
     hp: 50,
     provides: ['light', 'cooking'],
@@ -172,7 +175,7 @@ const BUILDING_DEFS = {
   },
   [BUILDING.HUT]: {
     name: 'Hut',
-    cost: { wood: 10, stone: 5 },
+    cost: { wood: 8, stone: 4 },  // Buildable within 3-4 minutes
     size: { w: 2, h: 2 },
     hp: 100,
     provides: ['shelter'],
@@ -181,7 +184,7 @@ const BUILDING_DEFS = {
   },
   [BUILDING.STORAGE]: {
     name: 'Storage Shed',
-    cost: { wood: 8, stone: 4 },
+    cost: { wood: 6, stone: 3 },  // Slightly cheaper for smooth early game
     size: { w: 2, h: 2 },
     hp: 80,
     provides: ['storage'],
@@ -191,7 +194,7 @@ const BUILDING_DEFS = {
   },
   [BUILDING.WORKBENCH]: {
     name: 'Workbench',
-    cost: { wood: 6, stone: 4 },
+    cost: { wood: 5, stone: 3 },  // Slightly cheaper for smooth early game
     size: { w: 1, h: 1 },
     hp: 60,
     provides: ['advancedCrafting'],
@@ -312,23 +315,23 @@ const ENEMY_DEFS = {
     name: 'Zombie',
     hp: 30,
     damage: 5,
-    speed: 30,
+    speed: 25,       // Slow — manageable for early nights
     unlockDay: 1,
     color: 0x44aa44,
   },
   [ENEMY_TYPE.SKELETON]: {
     name: 'Skeleton',
-    hp: 40,
-    damage: 8,
-    speed: 45,
+    hp: 35,
+    damage: 12,      // Hits harder than zombie
+    speed: 40,       // Medium speed
     unlockDay: 5,
     color: 0xddddaa,
   },
   [ENEMY_TYPE.WOLF]: {
     name: 'Wolf',
-    hp: 25,
-    damage: 10,
-    speed: 70,
+    hp: 20,          // Less HP than zombie — glass cannon
+    damage: 8,
+    speed: 80,       // Noticeably faster than zombies
     unlockDay: 10,
     color: 0x555566,
   },
