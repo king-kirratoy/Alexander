@@ -2,7 +2,7 @@
 
 window.AX = {};
 
-const GAME_VERSION = 'v1.6';
+const GAME_VERSION = 'v1.7';
 const DEBUG = false; // Set to true for diagnostic logging
 
 // ── World ──────────────────────────────────────────────────────
