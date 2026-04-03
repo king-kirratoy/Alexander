@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v1.1
+**Current version:** v1.2
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -16,7 +16,7 @@ Last updated: April 3, 2026 (Central Time)
 | `css/hud.css` | HUD overlay positioning, resource bar, population/day display, menu button, action panel, settler info panel with stat bars. |
 | `css/menus.css` | Main menu layout (title, username input, new/continue buttons), in-game menu overlay with resume/settings/exit options. |
 | `js/constants.js` | Game config: tile size (64px), world size (80×60), tile type enum, nature object types, harvestable definitions, resource types, camera limits, day/night timing, settler names/personalities/base stats, AI priority values, building definitions, crafting recipes, enemy definitions, save config. Global namespace `window.AX` defined here. |
-| `js/spriteLoader.js` | Sprite extraction utility. Defines SPRITE_ATLAS with bounding rectangles for all AI-generated spritesheets (nature objects, settlers, enemies, items, hut/house phases, UI icons). `extractSpritesFromSheet()` uses canvas to extract individual sprite regions from full sheet images, converts white backgrounds to transparent, and registers each as a named Phaser texture. `extractAllSprites()` processes all sheets. `hasSpriteTexture()` checks availability. Exposed via `window.AX.spriteLoader`. |
+| `js/spriteLoader.js` | Sprite extraction utility. Defines SHEET_CONFIGS with grid dimensions and sprite names for all AI-generated spritesheets. `autoDetectSpriteGrid()` scans each grid cell's pixels to find the tightest non-background bounding box, fixing misalignment from irregular AI-generated spacing. `extractSpritesFromSheetAuto()` extracts each sprite using detected bounds, then runs `floodFillEdgeTransparent()` from edges to remove background bleed while preserving interior art. `extractAllSprites()` orchestrates auto-detection and extraction for all sheets. `hasSpriteTexture()` checks availability. Black backgrounds assumed for all sheets except hut_house.png (white). Exposed via `window.AX.spriteLoader`. |
 | `js/state.js` | Global mutable state object `_state`: game meta (username, day, phase), tile map array, nature objects, settlers, buildings, resources, enemies, inventory, camera/UI state, population growth (birthCooldown, notifications). |
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
