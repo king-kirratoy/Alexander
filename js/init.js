@@ -64,6 +64,25 @@ const NATURE_DISPLAY_SIZE = {
 };
 
 /**
+ * Calculate display size for a sprite maintaining its natural aspect ratio.
+ * @param {string} textureKey - Phaser texture key
+ * @param {number} targetWidth - desired display width in pixels
+ * @param {Phaser.Scene} scene - active Phaser scene
+ * @returns {{ w: number, h: number }}
+ */
+function getDisplaySize(textureKey, targetWidth, scene) {
+  const tex = scene.textures.get(textureKey);
+  if (!tex || !tex.source || !tex.source[0]) {
+    return { w: targetWidth, h: targetWidth };
+  }
+  const srcW = tex.source[0].width;
+  const srcH = tex.source[0].height;
+  const ratio = srcH / srcW;
+  return { w: targetWidth, h: Math.round(targetWidth * ratio) };
+}
+
+
+/**
  * Return the correct texture key for a settler based on gender/activity/direction.
  */
 function getSettlerTexture(settler) {
@@ -243,6 +262,8 @@ class GameScene extends Phaser.Scene {
     // Performance (Phase 10)
     this._cullingTimer = 0;
     this._aiRoundRobinIndex = 0;
+    // Camera zoom
+    this._dynamicMinZoom = 0.5;
   }
 
   create() {
@@ -273,6 +294,11 @@ class GameScene extends Phaser.Scene {
     const centerY = Math.floor(WORLD_ROWS / 2) * TILE_SIZE;
     this.cameras.main.centerOn(centerX, centerY);
     this.cameras.main.setZoom(1.0);
+
+    // Calculate dynamic minimum zoom so map always fills the screen
+    const minZoomX = this.scale.width / WORLD_WIDTH;
+    const minZoomY = this.scale.height / WORLD_HEIGHT;
+    this._dynamicMinZoom = Math.max(minZoomX, minZoomY, 0.5);
 
     // ── Camera controls: drag to pan ────────────────────────
     this.input.on('pointerdown', (pointer) => {
@@ -311,13 +337,21 @@ class GameScene extends Phaser.Scene {
     // ── Camera controls: scroll to zoom ─────────────────────
     this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
       const cam = this.cameras.main;
-      const minZoomX = this.scale.width / WORLD_WIDTH;
-      const minZoomY = this.scale.height / WORLD_HEIGHT;
-      const minZoom = Math.max(minZoomX, minZoomY, CAMERA_MIN_ZOOM); // At least 0.5, but enough to fill screen
       if (deltaY > 0) {
-        cam.zoom = clamp(cam.zoom - CAMERA_ZOOM_STEP, minZoom, CAMERA_MAX_ZOOM);
+        cam.zoom = clamp(cam.zoom - CAMERA_ZOOM_STEP, this._dynamicMinZoom, CAMERA_MAX_ZOOM);
       } else {
-        cam.zoom = clamp(cam.zoom + CAMERA_ZOOM_STEP, minZoom, CAMERA_MAX_ZOOM);
+        cam.zoom = clamp(cam.zoom + CAMERA_ZOOM_STEP, this._dynamicMinZoom, CAMERA_MAX_ZOOM);
+      }
+    });
+
+    // ── Recalculate min zoom on window resize ────────────────
+    this.scale.on('resize', (gameSize) => {
+      const mzX = gameSize.width / WORLD_WIDTH;
+      const mzY = gameSize.height / WORLD_HEIGHT;
+      this._dynamicMinZoom = Math.max(mzX, mzY, 0.5);
+      const cam = this.cameras.main;
+      if (cam.zoom < this._dynamicMinZoom) {
+        cam.zoom = this._dynamicMinZoom;
       }
     });
 
@@ -618,11 +652,11 @@ class GameScene extends Phaser.Scene {
     };
 
     const idleKey = ENEMY_IDLE_KEY[enemy.type] || 'zombie_idle';
-    const ew = enemy.type === ENEMY_TYPE.WOLF ? 36 : 30;
-    const eh = enemy.type === ENEMY_TYPE.WOLF ? 30 : 38;
+    const targetEW = enemy.type === ENEMY_TYPE.WOLF ? 36 : 30;
+    const eSize = getDisplaySize(idleKey, targetEW, this);
 
     const bodyObj = this.add.image(0, 0, idleKey);
-    bodyObj.setDisplaySize(ew, eh);
+    bodyObj.setDisplaySize(eSize.w, eSize.h);
     bodyObj.setDepth(10);
     bodyObj.setData('currentTexture', idleKey);
 
@@ -928,15 +962,30 @@ class GameScene extends Phaser.Scene {
     }
 
     tempImg.destroy();
+    console.log('Rendered ' + (WORLD_ROWS * WORLD_COLS) + ' tiles to ground layer, size: ' + WORLD_WIDTH + 'x' + WORLD_HEIGHT);
   }
 
 
   renderNatureObjects() {
+    const NATURE_TARGET_WIDTHS = {
+      [NATURE.TREE_SMALL]:  48,
+      [NATURE.TREE_LARGE]:  56,
+      [NATURE.TREE_PINE]:   44,
+      [NATURE.TREE_AUTUMN]: 48,
+      [NATURE.ROCK_SMALL]:  32,
+      [NATURE.ROCK_LARGE]:  44,
+      [NATURE.IRON_ORE]:    36,
+      [NATURE.BUSH_BERRY]:  40,
+      [NATURE.BUSH_SHRUB]:  38,
+      [NATURE.TALL_GRASS]:  36,
+      [NATURE.STUMP]:       32,
+    };
+
     for (const obj of _state.natureObjects) {
       const worldPos = tileToWorld(obj.col, obj.row);
       const key = obj.type; // NATURE constants match texture keys
-      const size = NATURE_DISPLAY_SIZE[obj.type];
-      if (!size) continue;
+      const targetW = NATURE_TARGET_WIDTHS[obj.type] || 40;
+      const size = getDisplaySize(key, targetW, this);
 
       const img = this.add.image(worldPos.x, worldPos.y, key);
       img.setDisplaySize(size.w, size.h);
@@ -959,8 +1008,10 @@ class GameScene extends Phaser.Scene {
 
   createSettlerSprite(settler) {
     const initKey = getSettlerTexture(settler);
-    const sw = settler.isChild ? 20 : 28;
-    const sh = settler.isChild ? 26 : 36;
+    const targetW = settler.isChild ? 20 : 28;
+    const size = getDisplaySize(initKey, targetW, this);
+    const sw = size.w;
+    const sh = size.h;
 
     const bodyObj = this.add.image(0, 0, initKey);
     bodyObj.setDisplaySize(sw, sh);
@@ -1093,7 +1144,8 @@ class GameScene extends Phaser.Scene {
         if (obj.type.startsWith('tree_')) {
           // Swap depleted tree to stump texture
           obj.sprite.setTexture('stump');
-          obj.sprite.setDisplaySize(32, 28);
+          const stumpSize = getDisplaySize('stump', 32, this);
+          obj.sprite.setDisplaySize(stumpSize.w, stumpSize.h);
         } else if (obj.type === NATURE.BUSH_BERRY) {
           // Darken berry bush to show it's empty
           obj.sprite.setTint(0x666666);
@@ -1138,10 +1190,10 @@ class GameScene extends Phaser.Scene {
     const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
 
     if (spriteKey) {
-      const displayW = building.type === BUILDING.HOUSE ? 112 : 80;
-      const displayH = building.type === BUILDING.HOUSE ? 112 : 80;
+      const targetBW = building.type === BUILDING.HOUSE ? 112 : 80;
+      const bSize = getDisplaySize(spriteKey, targetBW, this);
       const img = this.add.image(x + w / 2, y + h / 2, spriteKey);
-      img.setDisplaySize(displayW, displayH);
+      img.setDisplaySize(bSize.w, bSize.h);
       img.setDepth(2);
       img.setData('phase', building.phase);
       img.setData('isSprite', true);
@@ -1216,10 +1268,13 @@ class GameScene extends Phaser.Scene {
       const trackedPhase = obj.getData('phase');
       if (trackedPhase !== building.phase) {
         if (obj.getData('isSprite')) {
-          // Sprite-based (hut/house): swap texture
+          // Sprite-based (hut/house): swap texture and recalculate aspect ratio
           const spriteKey = this._getBuildingPhaseSprite(building.type, building.phase);
           if (spriteKey) {
             obj.setTexture(spriteKey);
+            const targetBW = building.type === BUILDING.HOUSE ? 112 : 80;
+            const bSize = getDisplaySize(spriteKey, targetBW, this);
+            obj.setDisplaySize(bSize.w, bSize.h);
           }
           obj.setData('phase', building.phase);
         } else {
