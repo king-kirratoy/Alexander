@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v1.6
+**Current version:** v1.8
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -33,7 +33,7 @@ Last updated: April 3, 2026 (Central Time)
 | `js/save.js` | Save/load system using Supabase REST API. `initSupabase()` checks config, `saveGame()`/`loadGame()` handle upsert/restore, `serializeState()`/`deserializeState()` convert game state to/from JSON-safe snapshots, `startAutosave()`/`stopAutosave()` manage 60-second auto-save timer, `checkForExistingSave()` queries for existing saves, `deleteSave()` removes saves. Gracefully disables when Supabase URL/key are unconfigured. |
 | `js/ui.js` | HUD update (`updateHUD` syncs resource/population counts), settler info panel show/hide with real-time updates (equipped tool/weapon, child age progress, red heart styling), main menu show/hide, in-game menu toggle, action panel toggle. |
 | `js/events.js` | All DOM event listeners: main menu username input/buttons (with debounced save lookup and Continue enable/disable), HUD menu button, in-game menu buttons (Save & Exit awaits save before quitting), action panel toggle, settler info close, Escape key handler. Initializes Supabase on load. |
-| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system, minimap with click-to-navigate). Handles phase transitions including day-change events for population growth. Integrates player actions (drop mode) and follow camera. `GameScene.create()` detects loaded saves (skips world generation, renders from existing state). `startNewGame()` and `stopGame()` lifecycle (stopGame stops autosave). `bootApp()` entry point wires events and shows main menu. |
+| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system). Handles phase transitions including day-change events for population growth. Integrates player actions (drop mode) and follow camera. `GameScene.create()` detects loaded saves (skips world generation, renders from existing state). `startNewGame()` and `stopGame()` lifecycle (stopGame stops autosave). `bootApp()` entry point wires events and shows main menu. |
 
 ---
 
@@ -97,7 +97,7 @@ Last updated: April 3, 2026 (Central Time)
 **Lives in:** `init.js` (GameScene class)
 **What it does:** Renders tiles to a single RenderTexture (2560×1920, under 4096 browser limit) using individual PNG textures scaled to 64×64 via TILE_TEXTURE_MAP. Nature objects display as sprite Images loaded from `assets/sprites/individual/nature/` with type-specific display sizes (NATURE_DISPLAY_SIZE). Settlers use character sprites from `assets/sprites/individual/settlers/` with activity/direction-based texture swapping via `getSettlerTexture()`. Enemies use sprites from `assets/sprites/individual/enemies/` with idle/attack swapping. Hut and house buildings display construction phase sprites from `assets/sprites/individual/buildings/` (foundation/frame/complete); all other buildings remain as colored rectangles with opacity based on build phase. BootScene.preload() loads all individual PNGs directly — no runtime spritesheet slicing. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
 **Connects to:** All data systems via `_state`
-**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`, `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
+**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`
 
 ### Player Actions
 **Lives in:** `playerActions.js`, integrated via `events.js`, `init.js`
@@ -107,15 +107,9 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Follow Camera
 **Lives in:** `camera.js`, integrated via `events.js`, `init.js`
-**What it does:** Allows the player to follow a selected settler with the camera. Press F to toggle follow mode. Camera smoothly lerps toward the followed settler each frame. Follow is cancelled by pressing F again, clicking empty ground, dragging the camera, clicking the minimap, or if the settler dies.
+**What it does:** Allows the player to follow a selected settler with the camera. Press F to toggle follow mode. Camera smoothly lerps toward the followed settler each frame. Follow is cancelled by pressing F again, clicking empty ground, dragging the camera, or if the settler dies.
 **Connects to:** `state.js` (cameraFollowing, selectedSettler), `characters.js` (getSettlerById)
 **Key functions:** `initCamera()`, `toggleFollowCamera()`, `stopFollowCamera()`, `updateFollowCamera()`
-
-### Minimap
-**Lives in:** `init.js` (GameScene methods)
-**What it does:** Displays a 180×135 pixel minimap in the bottom-left corner showing terrain colors, building footprints, settler dots (green), and enemy dots (red, during night). A white rectangle indicates the current camera viewport. Updates content every 500ms; viewport rectangle updates every frame. Clicking on the minimap navigates the camera to that world position.
-**Connects to:** `state.js` (tileMap, buildings, settlers, enemies), `constants.js` (tile/building colors, world size)
-**Key functions:** `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
 
 ### Save System
 **Lives in:** `save.js`, integrated via `events.js`, `init.js`
@@ -156,7 +150,8 @@ playerActions.js → save.js → ui.js → events.js → init.js
 
 ## Notes
 
-- Individual PNG sprites in `assets/sprites/individual/` are loaded directly by BootScene.preload() — no runtime spritesheet slicing. Tiles (64×64), nature objects, settlers, enemies, and hut/house buildings all use their own PNGs. Other buildings (campfire, workbench, storage, forge, watchtower, walls, gate, farm) remain as colored shape placeholders.
+- Individual PNG sprites in `assets/sprites/individual/` are loaded directly by BootScene.preload() — no runtime spritesheet slicing. Ground tile PNGs (~156–162px) are scaled to 64×64 via `setDisplaySize` when drawn to the RenderTexture, producing clean seamless textures. Nature objects, settlers, enemies, and hut/house buildings all use their own PNGs. Other buildings (campfire, workbench, storage, forge, watchtower, walls, gate, farm) remain as colored shape placeholders.
+- HUD resource icons use PNG sprite images (`assets/sprites/individual/icons/`) as CSS `background-image` on `.hud-resource-icon` elements. The day/night icon swaps between `icon_sun.png` (day/dawn) and `icon_moon.png` (dusk/night) via inline style in `updateHUD()`.
 - EasyStar.js runs in synchronous mode — no async path callbacks needed.
 - Depleted nature objects show visual changes: trees become stumps, rocks/iron hide, berry bushes lose berries. Regrowable objects restore after their timer.
 - All Phaser visual objects are created in GameScene. Data systems manage state only.
