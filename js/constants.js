@@ -2,7 +2,7 @@
 
 window.AX = {};
 
-const GAME_VERSION = 'v1.5';
+const GAME_VERSION = 'v1.6';
 const DEBUG = false; // Set to true for diagnostic logging
 
 // ── World ──────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ const RESOURCE = {
 };
 
 // ── Camera ─────────────────────────────────────────────────────
-const CAMERA_MIN_ZOOM = 0.3;
+const CAMERA_MIN_ZOOM = 0.5;
 const CAMERA_MAX_ZOOM = 2.0;
 const CAMERA_ZOOM_STEP = 0.1;
 const CAMERA_PAN_SPEED = 10;

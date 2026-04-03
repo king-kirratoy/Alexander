@@ -311,10 +311,13 @@ class GameScene extends Phaser.Scene {
     // ── Camera controls: scroll to zoom ─────────────────────
     this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
       const cam = this.cameras.main;
+      const minZoomX = this.scale.width / WORLD_WIDTH;
+      const minZoomY = this.scale.height / WORLD_HEIGHT;
+      const minZoom = Math.max(minZoomX, minZoomY, CAMERA_MIN_ZOOM); // At least 0.5, but enough to fill screen
       if (deltaY > 0) {
-        cam.zoom = clamp(cam.zoom - CAMERA_ZOOM_STEP, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+        cam.zoom = clamp(cam.zoom - CAMERA_ZOOM_STEP, minZoom, CAMERA_MAX_ZOOM);
       } else {
-        cam.zoom = clamp(cam.zoom + CAMERA_ZOOM_STEP, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+        cam.zoom = clamp(cam.zoom + CAMERA_ZOOM_STEP, minZoom, CAMERA_MAX_ZOOM);
       }
     });
 
@@ -890,35 +893,40 @@ class GameScene extends Phaser.Scene {
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
-    // Single RenderTexture — 2560×1920 fits within 4096×4096 browser limit
+    // Create a single RenderTexture covering the entire world
     this._groundLayer = this.add.renderTexture(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this._groundLayer.setOrigin(0, 0);
     this._groundLayer.setDepth(0);
 
-    // Single reusable image — setTexture() swaps the texture each iteration,
-    // setDisplaySize() scales it to exactly TILE_SIZE×TILE_SIZE.
-    const tempImg = this.add.image(0, 0, 'tile_grass1').setOrigin(0, 0).setVisible(false);
+    // Create one reusable temp image for drawing scaled tiles
+    const firstKey = TILE_TEXTURE_MAP[TILE.GRASS_1] || 'tile_grass1';
+    const tempImg = this.add.image(0, 0, firstKey);
+    tempImg.setOrigin(0, 0);
     tempImg.setDisplaySize(TILE_SIZE, TILE_SIZE);
+    tempImg.setVisible(false);
 
     for (let row = 0; row < WORLD_ROWS; row++) {
       for (let col = 0; col < WORLD_COLS; col++) {
         const tileType = _state.tileMap[row][col];
         const key = TILE_TEXTURE_MAP[tileType];
-        if (key) {
+
+        if (key && this.textures.exists(key)) {
           tempImg.setTexture(key);
           tempImg.setDisplaySize(TILE_SIZE, TILE_SIZE);
           this._groundLayer.draw(tempImg, col * TILE_SIZE, row * TILE_SIZE);
         } else {
-          // Fallback: solid color rect for unmapped tile types
+          // Fallback: draw colored rectangle for unmapped tile types
           const color = TILE_COLORS[tileType] || 0x333333;
-          const fallbackGfx = this.add.graphics().setVisible(false);
-          fallbackGfx.fillStyle(color, 1);
-          fallbackGfx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-          this._groundLayer.draw(fallbackGfx, col * TILE_SIZE, row * TILE_SIZE);
-          fallbackGfx.destroy();
+          const gfx = this.add.graphics();
+          gfx.setVisible(false);
+          gfx.fillStyle(color, 1);
+          gfx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+          this._groundLayer.draw(gfx, col * TILE_SIZE, row * TILE_SIZE);
+          gfx.destroy();
         }
       }
     }
+
     tempImg.destroy();
   }
 
