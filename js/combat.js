@@ -17,10 +17,12 @@ function processSettlerAttack(settler, enemy, delta) {
 
   enemy.hp -= damage;
   settler.attackCooldown = 1000; // 1 second cooldown
+  if (typeof playSound === 'function') playSound('hit');
 
   if (enemy.hp <= 0) {
     enemy.hp = 0;
     enemy.isDead = true;
+    if (typeof playSound === 'function') playSound('enemyDeath');
   }
 }
 
@@ -40,6 +42,7 @@ function processEnemyAttack(enemy, target, delta) {
     // Target is a settler
     target.health -= damage;
     target.health = clamp(target.health, 0, target.maxHealth);
+    if (typeof playSound === 'function') playSound('settlerHurt');
     if (target.health <= 0) {
       checkSettlerKnockout(target);
     }
@@ -80,6 +83,7 @@ function checkSettlerKnockout(settler) {
 function settlerPermadeath(settler) {
   settler.isDead = true;
   settler.currentActivity = 'dead';
+  if (typeof playSound === 'function') playSound('settlerDeath');
 
   // Remove from any building occupants
   if (settler.shelterBuildingId) {

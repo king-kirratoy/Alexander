@@ -25,6 +25,7 @@ function initEvents() {
   });
 
   btnNewGame.addEventListener('click', () => {
+    if (typeof playSound === 'function') playSound('uiClick');
     const username = usernameInput.value.trim();
     if (!username) return;
     _state.username = username;
@@ -37,11 +38,13 @@ function initEvents() {
 
   // ── HUD Menu Button ────────────────────────────────────────
   el('hudMenuBtn').addEventListener('click', () => {
+    if (typeof playSound === 'function') playSound('uiClick');
     toggleGameMenu();
   });
 
   // ── In-Game Menu ───────────────────────────────────────────
   el('menuResume').addEventListener('click', () => {
+    if (typeof playSound === 'function') playSound('uiClick');
     toggleGameMenu();
   });
 
@@ -50,6 +53,7 @@ function initEvents() {
   });
 
   el('menuSaveQuit').addEventListener('click', () => {
+    if (typeof playSound === 'function') playSound('uiClick');
     // TODO: save to Supabase
     toggleGameMenu();
     stopGame();
@@ -59,6 +63,7 @@ function initEvents() {
 
   // ── Action Panel ───────────────────────────────────────────
   el('actionToggle').addEventListener('click', () => {
+    if (typeof playSound === 'function') playSound('uiClick');
     toggleActionPanel();
   });
 

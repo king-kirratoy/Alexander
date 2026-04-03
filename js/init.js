@@ -319,7 +319,28 @@ class GameScene extends Phaser.Scene {
     const prevPhase = this._prevPhase;
     this._prevPhase = currentPhase;
 
-    if (prevPhase === null) return; // first frame
+    if (prevPhase === null) {
+      // Set initial ambient layer
+      if (typeof setAmbientLayer === 'function') {
+        const ambientMap = {};
+        ambientMap[DAY_PHASE.DAY] = 'dayAmbient';
+        ambientMap[DAY_PHASE.DUSK] = 'duskAmbient';
+        ambientMap[DAY_PHASE.NIGHT] = 'nightAmbient';
+        ambientMap[DAY_PHASE.DAWN] = 'dawnAmbient';
+        setAmbientLayer(ambientMap[currentPhase] || 'dayAmbient');
+      }
+      return;
+    }
+
+    // Switch ambient layer on phase change
+    if (typeof setAmbientLayer === 'function') {
+      const ambientMap = {};
+      ambientMap[DAY_PHASE.DAY] = 'dayAmbient';
+      ambientMap[DAY_PHASE.DUSK] = 'duskAmbient';
+      ambientMap[DAY_PHASE.NIGHT] = 'nightAmbient';
+      ambientMap[DAY_PHASE.DAWN] = 'dawnAmbient';
+      setAmbientLayer(ambientMap[currentPhase] || 'dayAmbient');
+    }
 
     // NIGHT begins — spawn enemies
     if (currentPhase === DAY_PHASE.NIGHT && prevPhase !== DAY_PHASE.NIGHT) {
@@ -1006,6 +1027,11 @@ let _phaserGame = null;
  */
 function startNewGame() {
   hideMainMenu();
+
+  // Initialize audio system
+  if (typeof initAudio === 'function') {
+    initAudio();
+  }
 
   // Reset state
   _state.dayNumber = 1;
