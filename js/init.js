@@ -94,6 +94,17 @@ class GameScene extends Phaser.Scene {
     this._minimapViewport = null;
     this._minimapTimer = 0;
     this._minimapContainer = null;
+    // Visual feedback (Phase 10)
+    this._settlerHealthBars = {};
+    this._buildingProgressBars = {};
+    this._floatingTextPool = [];
+    this._floatingTextPoolSize = 20;
+    this._activeFloatingTexts = [];
+    this._phaseNotifications = [];
+    this._dayCounterText = null;
+    // Performance (Phase 10)
+    this._cullingTimer = 0;
+    this._aiRoundRobinIndex = 0;
   }
 
   create() {
@@ -196,9 +207,19 @@ class GameScene extends Phaser.Scene {
       initPlayerActions(this);
     }
 
+    // ── Initialize floating text pool ───────────��───────────
+    this.initFloatingTextPool();
+
     // ── Mark game as running ────────────────────────────────
     _state.gameRunning = true;
     _state.gameStarted = true;
+
+    // ── Hide loading screen ─────────────────────────────────
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) {
+      if (loadingScreen._dotInterval) clearInterval(loadingScreen._dotInterval);
+      loadingScreen.classList.add('hidden');
+    }
   }
 
 
@@ -259,12 +280,32 @@ class GameScene extends Phaser.Scene {
     this.updateDeathNotifications(delta);
     this.updateNotifications();
 
+    // ── Visual feedback (Phase 10) ──────────────────────────
+    this.updateSettlerHealthBars();
+    this.updateBuildingProgressBars();
+    this.updateFloatingTexts(delta);
+
+    // Process floating text queue from resource deposits
+    if (_state._floatingTextQueue && _state._floatingTextQueue.length > 0) {
+      for (const ft of _state._floatingTextQueue) {
+        this.showFloatingText(ft.x, ft.y, ft.resource, ft.amount);
+      }
+      _state._floatingTextQueue = [];
+    }
+
     // ── Update HUD every 500ms ──────────────────────────────
     this._hudUpdateTimer += delta;
     if (this._hudUpdateTimer > 500) {
       this._hudUpdateTimer = 0;
       updateHUD();
       updateSettlerInfoPanel();
+    }
+
+    // ── Cull off-screen nature objects every 500ms ─────────
+    this._cullingTimer += delta;
+    if (this._cullingTimer > 500) {
+      this._cullingTimer = 0;
+      this.cullOffscreenNature();
     }
 
     // ── Update minimap every 500ms ─────────────────────────
@@ -390,24 +431,32 @@ class GameScene extends Phaser.Scene {
       setAmbientLayer(ambientMap[currentPhase] || 'dayAmbient');
     }
 
-    // NIGHT begins — spawn enemies
+    // DUSK begins — warn player
+    if (currentPhase === DAY_PHASE.DUSK && prevPhase === DAY_PHASE.DAY) {
+      this.showPhaseNotification('Night is approaching...', '#ff9944', 2500);
+    }
+
+    // NIGHT begins — spawn enemies, notify
     if (currentPhase === DAY_PHASE.NIGHT && prevPhase !== DAY_PHASE.NIGHT) {
+      this.showPhaseNotification('Night has fallen', '#4466aa', 2500);
       if (typeof spawnEnemies === 'function') {
         spawnEnemies();
       }
     }
 
-    // DAWN begins — despawn enemies
+    // DAWN begins — despawn enemies, notify
     if (currentPhase === DAY_PHASE.DAWN && prevPhase === DAY_PHASE.NIGHT) {
+      this.showPhaseNotification('A new day begins', '#ffcc44', 2500);
       if (typeof despawnAllEnemies === 'function') {
         despawnAllEnemies();
       }
       this.clearAllEnemySprites();
     }
 
-    // New day — handle day transition (birth cooldown, child growth)
+    // New day — handle day transition, show day counter
     if (_state.dayNumber !== this._prevDayNumber) {
       this._prevDayNumber = _state.dayNumber;
+      this.showDayCounter(_state.dayNumber);
       if (typeof handleDayTransition === 'function') {
         handleDayTransition();
       }
@@ -1203,6 +1252,314 @@ class GameScene extends Phaser.Scene {
     this._minimapViewport.lineStyle(1, 0xffffff, 0.8);
     this._minimapViewport.strokeRect(vx, vy, vw, vh);
   }
+
+
+  // ── Visual Feedback (Phase 10) ─────────────────────────────
+
+  /**
+   * Initialize the floating text pool for resource deposit numbers.
+   */
+  initFloatingTextPool() {
+    for (let i = 0; i < this._floatingTextPoolSize; i++) {
+      const text = this.add.text(0, 0, '', {
+        fontFamily: 'VT323',
+        fontSize: '16px',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
+      }).setOrigin(0.5, 1);
+      text.setDepth(100);
+      text.setVisible(false);
+      this._floatingTextPool.push(text);
+    }
+  }
+
+
+  /**
+   * Show a floating "+N Resource" text that rises and fades.
+   * Color-coded: brown=wood, gray=stone, red=food, dark gray=iron.
+   */
+  showFloatingText(worldX, worldY, resourceType, amount) {
+    const RESOURCE_COLORS = {
+      wood: '#a0744a',
+      stone: '#999999',
+      food: '#dd4444',
+      iron: '#666666',
+    };
+
+    // Get a text object from the pool
+    let textObj = null;
+    for (let i = 0; i < this._floatingTextPool.length; i++) {
+      if (!this._floatingTextPool[i].visible) {
+        textObj = this._floatingTextPool[i];
+        break;
+      }
+    }
+    if (!textObj) return; // Pool exhausted
+
+    const label = '+' + amount + ' ' + resourceType.charAt(0).toUpperCase() + resourceType.slice(1);
+    textObj.setText(label);
+    textObj.setColor(RESOURCE_COLORS[resourceType] || '#ffffff');
+    textObj.setPosition(worldX, worldY - 10);
+    textObj.setAlpha(1);
+    textObj.setVisible(true);
+
+    this._activeFloatingTexts.push({
+      textObj: textObj,
+      startY: worldY - 10,
+      timer: 0,
+      duration: 1000,
+    });
+  }
+
+
+  /**
+   * Update active floating texts — rise and fade over duration.
+   */
+  updateFloatingTexts(delta) {
+    for (let i = this._activeFloatingTexts.length - 1; i >= 0; i--) {
+      const ft = this._activeFloatingTexts[i];
+      ft.timer += delta;
+      const progress = ft.timer / ft.duration;
+
+      if (progress >= 1) {
+        ft.textObj.setVisible(false);
+        this._activeFloatingTexts.splice(i, 1);
+        continue;
+      }
+
+      ft.textObj.setY(ft.startY - progress * 30); // Rise 30px
+      ft.textObj.setAlpha(1 - progress); // Fade out
+    }
+  }
+
+
+  /**
+   * Update settler health bars — only show when health < 100%.
+   * Red bar, 20px wide, 3px tall, above the name label.
+   */
+  updateSettlerHealthBars() {
+    for (const settler of _state.settlers) {
+      if (settler.isKnockedOut || settler.isDead) {
+        // Remove health bar if settler is down
+        if (this._settlerHealthBars[settler.id]) {
+          this._settlerHealthBars[settler.id].destroy();
+          delete this._settlerHealthBars[settler.id];
+        }
+        continue;
+      }
+
+      const ratio = settler.health / settler.maxHealth;
+      if (ratio >= 1) {
+        // Full health — hide bar
+        if (this._settlerHealthBars[settler.id]) {
+          this._settlerHealthBars[settler.id].setVisible(false);
+        }
+        continue;
+      }
+
+      // Create bar if needed
+      if (!this._settlerHealthBars[settler.id]) {
+        const gfx = this.add.graphics();
+        gfx.setDepth(15);
+        this._settlerHealthBars[settler.id] = gfx;
+      }
+
+      const bar = this._settlerHealthBars[settler.id];
+      bar.clear();
+      bar.setVisible(true);
+
+      const barWidth = 20;
+      const barHeight = 3;
+      const x = settler.x - barWidth / 2;
+      const y = settler.y - 32;
+
+      // Background
+      bar.fillStyle(0x333333, 0.8);
+      bar.fillRect(x, y, barWidth, barHeight);
+
+      // Red fill
+      const fillWidth = Math.max(0, barWidth * ratio);
+      bar.fillStyle(0xff3333, 1);
+      bar.fillRect(x, y, fillWidth, barHeight);
+    }
+
+    // Clean up bars for settlers no longer in state
+    for (const id in this._settlerHealthBars) {
+      const exists = _state.settlers.some(s => s.id === parseInt(id));
+      if (!exists) {
+        this._settlerHealthBars[id].destroy();
+        delete this._settlerHealthBars[id];
+      }
+    }
+  }
+
+
+  /**
+   * Update building progress bars — show above buildings under construction.
+   * Blue fill, hide when complete.
+   */
+  updateBuildingProgressBars() {
+    for (const building of _state.buildings) {
+      if (building.phase >= BUILD_PHASE.COMPLETE) {
+        if (this._buildingProgressBars[building.id]) {
+          this._buildingProgressBars[building.id].destroy();
+          delete this._buildingProgressBars[building.id];
+        }
+        continue;
+      }
+
+      // Create bar if needed
+      if (!this._buildingProgressBars[building.id]) {
+        const gfx = this.add.graphics();
+        gfx.setDepth(15);
+        this._buildingProgressBars[building.id] = gfx;
+      }
+
+      const bar = this._buildingProgressBars[building.id];
+      bar.clear();
+
+      const def = BUILDING_DEFS[building.type];
+      if (!def) continue;
+
+      const barWidth = def.size.w * TILE_SIZE * 0.8;
+      const barHeight = 3;
+      const centerX = building.col * TILE_SIZE + (def.size.w * TILE_SIZE) / 2;
+      const y = building.row * TILE_SIZE - 6;
+
+      // Background
+      bar.fillStyle(0x333333, 0.8);
+      bar.fillRect(centerX - barWidth / 2, y, barWidth, barHeight);
+
+      // Blue fill
+      const ratio = building.buildProgress / building.maxBuildWork;
+      const fillWidth = Math.max(0, barWidth * ratio);
+      bar.fillStyle(0x4488ff, 1);
+      bar.fillRect(centerX - barWidth / 2, y, fillWidth, barHeight);
+    }
+
+    // Clean up bars for buildings no longer in state
+    for (const id in this._buildingProgressBars) {
+      const exists = _state.buildings.some(b => b.id === parseInt(id));
+      if (!exists) {
+        this._buildingProgressBars[id].destroy();
+        delete this._buildingProgressBars[id];
+      }
+    }
+  }
+
+
+  /**
+   * Show a phase notification (night warning, dawn message, etc.)
+   */
+  showPhaseNotification(message, color, duration) {
+    const cam = this.cameras.main;
+    const text = this.add.text(cam.width / 2, cam.height * 0.35, message, {
+      fontFamily: 'VT323',
+      fontSize: '32px',
+      color: color,
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5, 0.5);
+    text.setDepth(120);
+    text.setScrollFactor(0);
+    text.setAlpha(0);
+
+    // Fade in
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      duration: 300,
+      onComplete: () => {
+        // Hold, then fade out
+        this.tweens.add({
+          targets: text,
+          alpha: 0,
+          delay: duration - 600,
+          duration: 300,
+          onComplete: () => {
+            text.destroy();
+          }
+        });
+      }
+    });
+  }
+
+
+  /**
+   * Show a large centered "Day X" counter that fades in and out.
+   */
+  showDayCounter(dayNumber) {
+    if (this._dayCounterText) {
+      this._dayCounterText.destroy();
+    }
+
+    const cam = this.cameras.main;
+    const text = this.add.text(cam.width / 2, cam.height * 0.25, 'Day ' + dayNumber, {
+      fontFamily: 'VT323',
+      fontSize: '48px',
+      color: '#ffdd88',
+      stroke: '#000000',
+      strokeThickness: 5,
+    }).setOrigin(0.5, 0.5);
+    text.setDepth(120);
+    text.setScrollFactor(0);
+    text.setAlpha(0);
+    this._dayCounterText = text;
+
+    // Fade in and out over 2 seconds
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      duration: 500,
+      onComplete: () => {
+        this.tweens.add({
+          targets: text,
+          alpha: 0,
+          delay: 1000,
+          duration: 500,
+          onComplete: () => {
+            text.destroy();
+            if (this._dayCounterText === text) {
+              this._dayCounterText = null;
+            }
+          }
+        });
+      }
+    });
+  }
+
+
+  // ── Performance Optimization (Phase 10) ────────────────────
+
+  /**
+   * Hide nature object sprites that are far off-screen, show those in view.
+   * Uses camera viewport + 2 tile buffer to avoid pop-in.
+   */
+  cullOffscreenNature() {
+    const cam = this.cameras.main;
+    const buffer = TILE_SIZE * 2;
+    const left = cam.scrollX - buffer;
+    const right = cam.scrollX + cam.width / cam.zoom + buffer;
+    const top = cam.scrollY - buffer;
+    const bottom = cam.scrollY + cam.height / cam.zoom + buffer;
+
+    for (const obj of _state.natureObjects) {
+      if (!obj.sprite) continue;
+      const wx = obj.col * TILE_SIZE + TILE_SIZE / 2;
+      const wy = obj.row * TILE_SIZE + TILE_SIZE / 2;
+      const inView = wx >= left && wx <= right && wy >= top && wy <= bottom;
+
+      if (!inView) {
+        obj.sprite.setVisible(false);
+      } else if (obj.depleted && !obj.type.startsWith('tree_') && obj.type !== 'bush_berry') {
+        // Depleted rocks/iron stay hidden (handled by updateNatureVisuals)
+        obj.sprite.setVisible(false);
+      } else {
+        obj.sprite.setVisible(true);
+      }
+    }
+  }
 }
 
 // ═══════════ GAME STARTUP ═══════════
@@ -1214,6 +1571,22 @@ let _phaserGame = null;
  */
 function startNewGame() {
   hideMainMenu();
+
+  // Show loading screen
+  const loadingScreen = document.getElementById('loadingScreen');
+  if (loadingScreen) {
+    loadingScreen.classList.remove('hidden');
+    // Animate the loading dots
+    let dotCount = 0;
+    const loadingText = document.getElementById('loadingText');
+    const dotInterval = setInterval(() => {
+      dotCount = (dotCount + 1) % 4;
+      const dots = '.'.repeat(dotCount || 1);
+      if (loadingText) loadingText.textContent = 'Generating world' + dots;
+    }, 400);
+    // Store interval so we can clear it when loading finishes
+    if (loadingScreen) loadingScreen._dotInterval = dotInterval;
+  }
 
   // Initialize audio system
   if (typeof initAudio === 'function') {
@@ -1236,7 +1609,7 @@ function startNewGame() {
   _state.selectedSettler = null;
   _state.cameraFollowing = null;
   _state.activeAction = null;
-  _state.birthCooldown = 0;
+  _state.birthCooldown = 4; // First child possible around day 5-8
   _state.notifications = [];
 
   // Start or restart Phaser
