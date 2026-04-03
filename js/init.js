@@ -83,6 +83,10 @@ class GameScene extends Phaser.Scene {
     this._isDragging = false;
     this._dragStart = { x: 0, y: 0 };
     this._camStart = { x: 0, y: 0 };
+    this._enemySprites = {};
+    this._prevPhase = null;
+    this._deathNotifications = [];
+    this._knockoutIndicators = {};
   }
 
   create() {
@@ -193,8 +197,22 @@ class GameScene extends Phaser.Scene {
     if (typeof updateDayNight === 'function') {
       updateDayNight(delta);
     }
+    this.handlePhaseTransitions();
     this.updateNightOverlay();
     this.updateLightSources();
+
+    // ── Update enemies ──────────────────────────────────────
+    if (typeof isNight === 'function' && isNight()) {
+      if (typeof updateEnemies === 'function') {
+        updateEnemies(delta);
+      }
+      if (typeof updateCombat === 'function') {
+        updateCombat(delta);
+      }
+    }
+    this.updateEnemySprites();
+    this.updateKnockoutIndicators();
+    this.updateDeathNotifications(delta);
 
     // ── Update HUD every 500ms ──────────────────────────────
     this._hudUpdateTimer += delta;
@@ -275,6 +293,261 @@ class GameScene extends Phaser.Scene {
       }
 
       this._lightGraphics.push(gfx);
+    }
+  }
+
+
+  // ── Phase Transitions ───────────────────────────────────────
+
+  handlePhaseTransitions() {
+    const currentPhase = _state.currentPhase;
+    if (this._prevPhase === currentPhase) return;
+
+    const prevPhase = this._prevPhase;
+    this._prevPhase = currentPhase;
+
+    if (prevPhase === null) return; // first frame
+
+    // NIGHT begins — spawn enemies
+    if (currentPhase === DAY_PHASE.NIGHT && prevPhase !== DAY_PHASE.NIGHT) {
+      if (typeof spawnEnemies === 'function') {
+        spawnEnemies();
+      }
+    }
+
+    // DAWN begins — despawn enemies
+    if (currentPhase === DAY_PHASE.DAWN && prevPhase === DAY_PHASE.NIGHT) {
+      if (typeof despawnAllEnemies === 'function') {
+        despawnAllEnemies();
+      }
+      this.clearAllEnemySprites();
+    }
+  }
+
+
+  // ── Enemy Rendering ────────────────────────────────────────
+
+  createEnemySprite(enemy) {
+    const def = ENEMY_DEFS[enemy.type];
+    if (!def) return;
+
+    const radius = 11;
+    const gfx = this.add.graphics();
+    gfx.setDepth(10);
+
+    // Shadow
+    gfx.fillStyle(0x000000, 0.3);
+    gfx.fillCircle(2, 2, radius);
+
+    // Body
+    gfx.fillStyle(def.color, 1);
+    gfx.fillCircle(0, 0, radius);
+
+    // Eyes (menacing red dots)
+    gfx.fillStyle(0xff0000, 1);
+    gfx.fillCircle(-3, -3, 2);
+    gfx.fillCircle(3, -3, 2);
+
+    const container = this.add.container(enemy.x, enemy.y, [gfx]);
+    container.setDepth(10);
+    container.setData('enemyId', enemy.id);
+
+    // Type label
+    const label = this.add.text(0, -16, def.name, {
+      fontFamily: 'VT323',
+      fontSize: '11px',
+      color: '#ff6666',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5, 1);
+    container.add(label);
+
+    // HP bar background
+    const hpBg = this.add.graphics();
+    hpBg.fillStyle(0x333333, 0.8);
+    hpBg.fillRect(-12, -22, 24, 3);
+    container.add(hpBg);
+
+    // HP bar fill
+    const hpBar = this.add.graphics();
+    hpBar.fillStyle(0xff3333, 1);
+    hpBar.fillRect(-12, -22, 24, 3);
+    container.add(hpBar);
+    container.setData('hpBar', hpBar);
+    container.setData('gfx', gfx);
+
+    this._enemySprites[enemy.id] = container;
+    enemy.sprite = container;
+  }
+
+
+  updateEnemySprites() {
+    // Create sprites for new enemies
+    for (const enemy of _state.enemies) {
+      if (!enemy.isDead && !this._enemySprites[enemy.id]) {
+        this.createEnemySprite(enemy);
+      }
+    }
+
+    // Update positions and HP bars
+    for (const enemy of _state.enemies) {
+      const container = this._enemySprites[enemy.id];
+      if (!container) continue;
+
+      if (enemy.isDead) {
+        // Fade out and destroy
+        this.tweens.add({
+          targets: container,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            container.destroy();
+          }
+        });
+        delete this._enemySprites[enemy.id];
+        continue;
+      }
+
+      container.x = enemy.x;
+      container.y = enemy.y;
+
+      // Update HP bar
+      const hpBar = container.getData('hpBar');
+      if (hpBar) {
+        hpBar.clear();
+        const ratio = enemy.hp / enemy.maxHp;
+        const barWidth = Math.max(0, 24 * ratio);
+        hpBar.fillStyle(ratio > 0.5 ? 0xff3333 : 0xff0000, 1);
+        hpBar.fillRect(-12, -22, barWidth, 3);
+      }
+    }
+
+    // Remove dead enemies from state after fade-out is triggered
+    if (typeof removeDeadEnemies === 'function') {
+      removeDeadEnemies();
+    }
+
+    // Clean up sprites for enemies no longer in state
+    for (const id in this._enemySprites) {
+      const exists = _state.enemies.some(e => e.id === parseInt(id));
+      if (!exists) {
+        const container = this._enemySprites[id];
+        if (container) container.destroy();
+        delete this._enemySprites[id];
+      }
+    }
+  }
+
+
+  clearAllEnemySprites() {
+    for (const id in this._enemySprites) {
+      const container = this._enemySprites[id];
+      if (container) container.destroy();
+    }
+    this._enemySprites = {};
+  }
+
+
+  // ── Knockout & Death Visuals ───────────────────────────────
+
+  updateKnockoutIndicators() {
+    // Create indicators for knocked-out settlers
+    for (const settler of _state.settlers) {
+      if (settler.isKnockedOut && !this._knockoutIndicators[settler.id]) {
+        this.createKnockoutIndicator(settler);
+      }
+      if (!settler.isKnockedOut && this._knockoutIndicators[settler.id]) {
+        this._knockoutIndicators[settler.id].destroy();
+        delete this._knockoutIndicators[settler.id];
+        // Restore settler sprite appearance
+        const container = this._settlerSprites[settler.id];
+        if (container) {
+          container.setScale(1, 1);
+          container.setAlpha(1);
+        }
+      }
+    }
+
+    // Update positions of existing indicators
+    for (const settler of _state.settlers) {
+      if (!settler.isKnockedOut) continue;
+
+      const indicator = this._knockoutIndicators[settler.id];
+      if (indicator) {
+        indicator.x = settler.x;
+        indicator.y = settler.y - 30;
+      }
+
+      // Flatten settler sprite to show they're down
+      const container = this._settlerSprites[settler.id];
+      if (container) {
+        container.setScale(1, 0.4);
+        container.setAlpha(0.7);
+      }
+    }
+
+    // Clean up indicators for settlers no longer in state
+    for (const id in this._knockoutIndicators) {
+      const exists = _state.settlers.some(s => s.id === parseInt(id));
+      if (!exists) {
+        this._knockoutIndicators[id].destroy();
+        delete this._knockoutIndicators[id];
+      }
+    }
+  }
+
+
+  createKnockoutIndicator(settler) {
+    const text = this.add.text(settler.x, settler.y - 30, '!', {
+      fontFamily: 'VT323',
+      fontSize: '18px',
+      color: '#ff0000',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5, 1);
+    text.setDepth(15);
+
+    // Pulsing animation
+    this.tweens.add({
+      targets: text,
+      alpha: { from: 1, to: 0.3 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    this._knockoutIndicators[settler.id] = text;
+  }
+
+
+  showDeathNotification(name) {
+    const cam = this.cameras.main;
+    const screenX = cam.width / 2;
+    const screenY = cam.height * 0.3;
+
+    const text = this.add.text(screenX, screenY, 'RIP ' + name, {
+      fontFamily: 'VT323',
+      fontSize: '28px',
+      color: '#ff4444',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5, 0.5);
+    text.setDepth(100);
+    text.setScrollFactor(0);
+
+    this._deathNotifications.push({ text: text, timer: 2000 });
+  }
+
+
+  updateDeathNotifications(delta) {
+    for (let i = this._deathNotifications.length - 1; i >= 0; i--) {
+      const notif = this._deathNotifications[i];
+      notif.timer -= delta;
+      notif.text.setAlpha(clamp(notif.timer / 500, 0, 1));
+      if (notif.timer <= 0) {
+        notif.text.destroy();
+        this._deathNotifications.splice(i, 1);
+      }
     }
   }
 
@@ -391,6 +664,7 @@ class GameScene extends Phaser.Scene {
     container.add(activityText);
     container.setData('activityLabel', activityText);
 
+    container.setData('settlerName', settler.name);
     this._settlerSprites[settler.id] = container;
     settler.sprite = container;
 
@@ -404,9 +678,31 @@ class GameScene extends Phaser.Scene {
 
 
   updateSettlerSprites() {
+    // Remove sprites for settlers no longer in state (permadeath)
+    for (const id in this._settlerSprites) {
+      const exists = _state.settlers.some(s => s.id === parseInt(id));
+      if (!exists) {
+        const container = this._settlerSprites[id];
+        if (container) {
+          // Find the settler name from the container before destroying
+          const nameLabel = container.list ? container.list.find(c => c.type === 'Text' && c.style && c.style.fontSize === '14px') : null;
+          const deathName = container.getData('settlerName');
+          if (deathName) {
+            this.showDeathNotification(deathName);
+          }
+          container.destroy();
+        }
+        delete this._settlerSprites[id];
+      }
+    }
+
     for (const settler of _state.settlers) {
       const container = this._settlerSprites[settler.id];
-      if (!container) continue;
+      if (!container) {
+        // New settler appeared — create sprite
+        this.createSettlerSprite(settler);
+        continue;
+      }
       container.x = settler.x;
       container.y = settler.y;
 
@@ -414,9 +710,15 @@ class GameScene extends Phaser.Scene {
       const actLabel = container.getData('activityLabel');
       if (actLabel) {
         const act = settler.currentActivity;
-        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating' || act === 'building' || act === 'crafting' || act === 'sleeping' || act === 'guarding') {
+        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating' || act === 'building' || act === 'crafting' || act === 'sleeping' || act === 'guarding' || act === 'fighting' || act === 'fleeing' || act === 'rescuing' || act === 'knockedOut') {
           actLabel.setText('[' + act + ']');
           actLabel.setVisible(true);
+          // Color the label based on activity
+          if (act === 'fighting') actLabel.setColor('#ff6666');
+          else if (act === 'fleeing') actLabel.setColor('#ffaa44');
+          else if (act === 'knockedOut') actLabel.setColor('#ff0000');
+          else if (act === 'rescuing') actLabel.setColor('#44ff44');
+          else actLabel.setColor('#aaaaaa');
         } else {
           actLabel.setVisible(false);
         }
@@ -535,6 +837,16 @@ class GameScene extends Phaser.Scene {
 
 
   updateBuildingSprites() {
+    // Remove sprites for destroyed buildings
+    for (const id in this._buildingSprites) {
+      const exists = _state.buildings.some(b => b.id === parseInt(id));
+      if (!exists) {
+        const gfx = this._buildingSprites[id];
+        if (gfx) gfx.destroy();
+        delete this._buildingSprites[id];
+      }
+    }
+
     // Create sprites for any new buildings
     for (const building of _state.buildings) {
       if (!this._buildingSprites[building.id]) {

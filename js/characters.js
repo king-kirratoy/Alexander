@@ -58,9 +58,13 @@ function createSettler(col, row, isChild) {
     // Shelter
     shelterBuildingId: null,
 
+    // Combat
+    attackCooldown: 0,
+
     // Flags
     isKnockedOut: false,
     knockedOutAt: null,
+    isDead: false,
   };
 
   // Apply personality stat modifiers
@@ -177,6 +181,21 @@ function updateSettlerAI(settler, delta) {
     if (handleGuarding(settler, delta)) return;
   }
 
+  // If fighting, keep fighting
+  if (settler.currentTask && settler.currentTask.type === 'fighting') {
+    if (handleFighting(settler, delta)) return;
+  }
+
+  // If fleeing, keep fleeing
+  if (settler.currentTask && settler.currentTask.type === 'fleeing') {
+    if (handleFleeing(settler, delta)) return;
+  }
+
+  // If rescuing, keep rescuing
+  if (settler.currentTask && settler.currentTask.type === 'rescuing') {
+    if (handleRescuing(settler, delta)) return;
+  }
+
   // If still moving toward a destination, keep going
   if (settler.path && settler.pathIndex < settler.path.length) return;
 
@@ -185,9 +204,39 @@ function updateSettlerAI(settler, delta) {
 
   // ── Evaluate priorities ──────────────────────────────────────
 
+  // Priority: FLEE (100) — unarmed settlers near enemies at night
+  if (typeof isNight === 'function' && isNight() && !settler.equippedWeapon) {
+    if (typeof findNearestEnemy === 'function') {
+      const nearEnemy = findNearestEnemy(settler.col, settler.row, 4);
+      if (nearEnemy) {
+        if (typeof tryFlee === 'function') {
+          tryFlee(settler);
+          settler.aiCooldown = randInt(1000, 2000);
+          return;
+        }
+      }
+    }
+  }
+
+  // Priority: FIGHT (90) — armed settlers engage enemies at night
+  if (typeof isNight === 'function' && isNight() && settler.equippedWeapon) {
+    if (tryFight(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
   // Priority 1: EAT (hunger < 30)
   if (settler.hunger < 30) {
     if (tryEat(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
+  // Priority: RESCUE (60) — revive knocked-out settlers
+  if (typeof findKnockedOutSettler === 'function') {
+    if (tryRescue(settler)) {
       settler.aiCooldown = randInt(1000, 2000);
       return;
     }
@@ -822,7 +871,7 @@ function tryGuard(settler) {
 
 
 /**
- * Handle guarding — patrol until dawn.
+ * Handle guarding — patrol until dawn. Engage enemies if found.
  * Returns true if still guarding.
  */
 function handleGuarding(settler, delta) {
@@ -832,10 +881,193 @@ function handleGuarding(settler, delta) {
     return false;
   }
 
+  // Check for nearby enemies — guards should engage
+  if (typeof findNearestEnemy === 'function' && settler.equippedWeapon) {
+    const enemy = findNearestEnemy(settler.col, settler.row, 5);
+    if (enemy) {
+      clearTask(settler);
+      settler.aiCooldown = 0; // re-evaluate immediately → will pick FIGHT
+      return false;
+    }
+  }
+
   // If done with current patrol path, pick a new patrol point
   if (!settler.path || settler.pathIndex >= settler.path.length) {
     settler.aiCooldown = 0;
     return false; // Let AI re-evaluate (will pick trySleep → tryGuard again)
+  }
+
+  return true;
+}
+
+
+/**
+ * Try to fight the nearest enemy (armed settlers only).
+ * Returns true if action taken.
+ */
+function tryFight(settler) {
+  if (typeof findNearestEnemy !== 'function') return false;
+  if (!settler.equippedWeapon) {
+    // Try to equip a weapon from inventory
+    if (typeof findBestWeapon === 'function') {
+      const weapon = findBestWeapon();
+      if (weapon) {
+        settler.equippedWeapon = weapon;
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  const enemy = findNearestEnemy(settler.col, settler.row, 5);
+  if (!enemy) return false;
+
+  const path = findPath(settler.col, settler.row, enemy.col, enemy.row);
+  if (path && path.length > 0) {
+    settler.path = path;
+    settler.pathIndex = 0;
+  }
+
+  settler.currentTask = { type: 'fighting', targetId: enemy.id };
+  settler.currentActivity = 'fighting';
+  settler.currentPriority = AI_PRIORITY.FIGHT;
+  if (!settler.attackCooldown) settler.attackCooldown = 0;
+  return true;
+}
+
+
+/**
+ * Handle fighting — settler attacks adjacent enemy.
+ * Returns true if still busy.
+ */
+function handleFighting(settler, delta) {
+  // If it's no longer night, stop fighting
+  if (typeof isNight === 'function' && !isNight()) {
+    clearTask(settler);
+    return false;
+  }
+
+  const enemy = _state.enemies.find(e => e.id === settler.currentTask.targetId && !e.isDead);
+  if (!enemy) {
+    // Target dead — look for another
+    clearTask(settler);
+    return false;
+  }
+
+  const d = dist(settler.col, settler.row, enemy.col, enemy.row);
+  if (d <= 1.5) {
+    // Adjacent — attack
+    settler.path = null;
+    settler.pathIndex = 0;
+    settler.currentActivity = 'fighting';
+    if (typeof processSettlerAttack === 'function') {
+      processSettlerAttack(settler, enemy, delta);
+    }
+    return true;
+  }
+
+  // Not adjacent — path to enemy
+  if (!settler.path || settler.pathIndex >= settler.path.length) {
+    const path = findPath(settler.col, settler.row, enemy.col, enemy.row);
+    if (path && path.length > 0) {
+      settler.path = path;
+      settler.pathIndex = 0;
+    } else {
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/**
+ * Handle fleeing — settler runs to building.
+ * Returns true if still busy.
+ */
+function handleFleeing(settler, delta) {
+  // If no more enemies nearby, stop fleeing
+  if (typeof findNearestEnemy === 'function') {
+    const nearEnemy = findNearestEnemy(settler.col, settler.row, 6);
+    if (!nearEnemy) {
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  // If it's no longer night, stop fleeing
+  if (typeof isNight === 'function' && !isNight()) {
+    clearTask(settler);
+    return false;
+  }
+
+  // If still moving, keep going
+  if (settler.path && settler.pathIndex < settler.path.length) {
+    return true;
+  }
+
+  // Arrived or no path — re-evaluate
+  clearTask(settler);
+  return false;
+}
+
+
+/**
+ * Try to rescue a knocked-out settler.
+ * Returns true if action taken.
+ */
+function tryRescue(settler) {
+  if (settler.isKnockedOut) return false;
+  if (settler.currentActivity === 'fighting') return false;
+
+  const knockedOut = findKnockedOutSettler();
+  if (!knockedOut) return false;
+
+  // Check if someone else is already rescuing this settler
+  for (const s of _state.settlers) {
+    if (s.id !== settler.id && s.currentTask && s.currentTask.type === 'rescuing' && s.currentTask.targetId === knockedOut.id) {
+      return false;
+    }
+  }
+
+  const path = findPath(settler.col, settler.row, knockedOut.col, knockedOut.row);
+  if (path && path.length > 0) {
+    settler.path = path;
+    settler.pathIndex = 0;
+  }
+
+  settler.currentTask = { type: 'rescuing', targetId: knockedOut.id, progress: 0 };
+  settler.currentActivity = 'walking';
+  settler.currentPriority = AI_PRIORITY.RESCUE;
+  return true;
+}
+
+
+/**
+ * Handle rescuing — settler revives knocked-out settler.
+ * Returns true if still busy.
+ */
+function handleRescuing(settler, delta) {
+  const knockedOut = _state.settlers.find(s => s.id === settler.currentTask.targetId && s.isKnockedOut);
+  if (!knockedOut) {
+    clearTask(settler);
+    return false;
+  }
+
+  if (typeof processRescue === 'function') {
+    const stillRescuing = processRescue(settler, knockedOut, delta);
+    if (!stillRescuing) {
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  // If still walking to knocked-out settler
+  if (settler.path && settler.pathIndex < settler.path.length) {
+    return true;
   }
 
   return true;
