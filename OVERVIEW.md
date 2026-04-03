@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.8
+**Current version:** v0.9
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -30,10 +30,10 @@ Last updated: April 3, 2026 (Central Time)
 | `js/audio.js` | Procedural audio system using Web Audio API. Master volume control, sound effect generation (14 effects: chop, mine, forage, build, craft, eat, hit, enemyDeath, settlerHurt, settlerDeath, buildComplete, birthChime, uiClick, notification), ambient sound layers (day/dusk/night/dawn) with crossfade transitions, throttle system for activity sounds. |
 | `js/camera.js` | Follow-camera system. `initCamera()` stores scene reference. `toggleFollowCamera()` toggles follow mode for the selected settler. `updateFollowCamera()` smoothly lerps camera toward followed settler each frame. `stopFollowCamera()` cancels follow. Shows/hides a "Following [Name]" HUD indicator. Follow cancelled by: F key, clicking empty ground, dragging camera, settler death. |
 | `js/playerActions.js` | Resource dropping system. `initPlayerActions()` stores scene reference. `startDropAction()` activates drop mode with crosshair cursor and button highlight. `executeDropAction()` places resources at clicked world position (10 wood/stone/food, 5 iron) with visual feedback and sound. `cancelDropAction()` resets state. Drop mode stays active for multiple drops; cancelled by Escape/right-click/panel close. Includes cursor tooltip. |
-| `js/save.js` | Stub — Phase 9. |
+| `js/save.js` | Save/load system using Supabase REST API. `initSupabase()` checks config, `saveGame()`/`loadGame()` handle upsert/restore, `serializeState()`/`deserializeState()` convert game state to/from JSON-safe snapshots, `startAutosave()`/`stopAutosave()` manage 60-second auto-save timer, `checkForExistingSave()` queries for existing saves, `deleteSave()` removes saves. Gracefully disables when Supabase URL/key are unconfigured. |
 | `js/ui.js` | HUD update (`updateHUD` syncs resource/population counts), settler info panel show/hide with real-time updates (equipped tool/weapon, child age progress, red heart styling), main menu show/hide, in-game menu toggle, action panel toggle. |
-| `js/events.js` | All DOM event listeners: main menu username input/buttons, HUD menu button, in-game menu buttons, action panel toggle, settler info close, Escape key handler. |
-| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system, minimap with click-to-navigate). Handles phase transitions including day-change events for population growth. Integrates player actions (drop mode) and follow camera. `startNewGame()` and `stopGame()` lifecycle. `bootApp()` entry point wires events and shows main menu. |
+| `js/events.js` | All DOM event listeners: main menu username input/buttons (with debounced save lookup and Continue enable/disable), HUD menu button, in-game menu buttons (Save & Exit awaits save before quitting), action panel toggle, settler info close, Escape key handler. Initializes Supabase on load. |
+| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system, minimap with click-to-navigate). Handles phase transitions including day-change events for population growth. Integrates player actions (drop mode) and follow camera. `GameScene.create()` detects loaded saves (skips world generation, renders from existing state). `startNewGame()` and `stopGame()` lifecycle (stopGame stops autosave). `bootApp()` entry point wires events and shows main menu. |
 
 ---
 
@@ -116,6 +116,12 @@ Last updated: April 3, 2026 (Central Time)
 **What it does:** Displays a 180×135 pixel minimap in the bottom-left corner showing terrain colors, building footprints, settler dots (green), and enemy dots (red, during night). A white rectangle indicates the current camera viewport. Updates content every 500ms; viewport rectangle updates every frame. Clicking on the minimap navigates the camera to that world position.
 **Connects to:** `state.js` (tileMap, buildings, settlers, enemies), `constants.js` (tile/building colors, world size)
 **Key functions:** `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
+
+### Save System
+**Lives in:** `save.js`, integrated via `events.js`, `init.js`
+**What it does:** Saves and loads game state using the Supabase REST API (no SDK dependency). `initSupabase()` checks if SUPABASE_URL and SUPABASE_KEY are configured; if not, disables save/load gracefully. `serializeState()` creates a JSON-safe snapshot of all persistent game data (tile map, nature objects, settlers, buildings, resources, inventory, day/night state). `deserializeState()` restores state from a snapshot, resetting transient properties (sprites, paths, AI cooldowns). Auto-save triggers every 60 seconds with a visual "Saving..." indicator. Save on exit via the in-game menu. Continue button on main menu is enabled when an existing save is found (debounced lookup on username input). Username-based lookup with no password — same pattern as Tech Warrior Online.
+**Connects to:** `state.js` (all game state), `constants.js` (SUPABASE_URL, SUPABASE_KEY, AUTOSAVE_INTERVAL), `events.js` (menu integration), `init.js` (GameScene load detection)
+**Key functions:** `initSupabase()`, `checkForExistingSave()`, `saveGame()`, `loadGame()`, `deleteSave()`, `serializeState()`, `deserializeState()`, `startAutosave()`, `stopAutosave()`, `showSaveIndicator()`
 
 ### UI
 **Lives in:** `ui.js`, `events.js`
