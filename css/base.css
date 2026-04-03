@@ -1,0 +1,188 @@
+/* ============================================================
+   ROOT VARIABLES
+   ============================================================ */
+
+:root {
+  /* ── Colors ── */
+  --bg-dark: #1a1a2e;
+  --bg-panel: rgba(20, 20, 40, 0.85);
+  --bg-panel-solid: #1c1c3a;
+  --green-primary: #6aa84f;
+  --green-bright: #84bd00;
+  --green-dark: #4a7a30;
+  --brown-primary: #b4854a;
+  --brown-dark: #7a5a2e;
+  --blue-primary: #4a90d9;
+  --blue-water: #3b7dd8;
+  --red-danger: #e05050;
+  --red-health: #e74c3c;
+  --orange-warning: #f0a030;
+  --orange-hunger: #e67e22;
+  --gold-accent: #f0c040;
+  --iron-gray: #8a8a8a;
+
+  /* ── Typography ── */
+  --font-display: 'Press Start 2P', monospace;
+  --font-body: 'VT323', monospace;
+
+  /* ── Spacing & Layout ── */
+  --radius: 8px;
+  --radius-sm: 4px;
+  --radius-lg: 12px;
+
+  /* ── Surfaces & Borders ── */
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-bright: rgba(255, 255, 255, 0.25);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  /* ── Text ── */
+  --text: #f0f0f0;
+  --text-muted: #a0a0b0;
+  --text-dim: #606070;
+}
+
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--text);
+  cursor: default;
+  font-family: var(--font-body);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  width: 100vw;
+}
+
+canvas {
+  display: block;
+}
+
+
+/* ============================================================
+   GAME CONTAINER
+   ============================================================ */
+
+#gameContainer {
+  height: 100vh;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100vw;
+  z-index: 0;
+}
+
+#gameContainer canvas {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+
+/* ============================================================
+   SHARED COMPONENTS
+   ============================================================ */
+
+/* --- Buttons --- */
+
+.menu-btn {
+  background: var(--bg-panel);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 12px 24px;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.menu-btn:hover:not(:disabled) {
+  border-color: var(--green-bright);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.menu-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.menu-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.menu-btn-primary {
+  background: var(--green-dark);
+  border-color: var(--green-primary);
+}
+
+.menu-btn-primary:hover:not(:disabled) {
+  background: var(--green-primary);
+  border-color: var(--green-bright);
+}
+
+.menu-btn-danger {
+  border-color: var(--red-danger);
+  color: var(--red-danger);
+}
+
+.menu-btn-danger:hover:not(:disabled) {
+  background: rgba(224, 80, 80, 0.15);
+  border-color: var(--red-danger);
+}
+
+/* --- Inputs --- */
+
+.menu-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 22px;
+  outline: none;
+  padding: 10px 14px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+  width: 100%;
+}
+
+.menu-input:focus {
+  border-color: var(--green-primary);
+}
+
+.menu-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* --- Labels --- */
+
+.menu-label {
+  color: var(--text-muted);
+  display: block;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* --- Utility --- */
+
+.hidden {
+  display: none !important;
+}

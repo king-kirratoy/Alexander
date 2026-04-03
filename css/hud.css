@@ -1,0 +1,283 @@
+/* ============================================================
+   HUD OVERLAY
+   ============================================================ */
+
+.hud {
+  left: 0;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  z-index: 100;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+
+/* --- Resource Bar (top-left) --- */
+
+.hud-resources {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0 0 var(--radius) 0;
+  display: flex;
+  gap: 16px;
+  left: 0;
+  padding: 8px 16px;
+  position: fixed;
+  top: 0;
+}
+
+.hud-resource {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.hud-resource-icon {
+  height: 20px;
+  image-rendering: pixelated;
+  width: 20px;
+}
+
+.hud-icon-wood {
+  background: var(--brown-primary);
+  border-radius: 2px;
+}
+
+.hud-icon-stone {
+  background: var(--iron-gray);
+  border-radius: 50%;
+}
+
+.hud-icon-food {
+  background: var(--red-danger);
+  border-radius: 50%;
+}
+
+.hud-icon-iron {
+  background: #505060;
+  border-radius: 2px;
+}
+
+.hud-icon-pop {
+  background: var(--green-primary);
+  border-radius: 50% 50% 4px 4px;
+}
+
+.hud-icon-day {
+  background: var(--gold-accent);
+  border-radius: 50%;
+}
+
+.hud-resource span,
+.hud-status-item span {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+
+/* --- Population & Day (top-right) --- */
+
+.hud-status {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0 0 0 var(--radius);
+  display: flex;
+  gap: 16px;
+  padding: 8px 56px 8px 16px;
+  position: fixed;
+  right: 0;
+  top: 0;
+}
+
+.hud-status-item {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+
+/* --- Menu Button --- */
+
+.hud-menu-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 0 0 0 var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px 12px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  transition: all 0.2s ease;
+}
+
+.hud-menu-btn:hover {
+  background: var(--bg-panel-solid);
+  color: var(--text);
+}
+
+
+/* --- Action Menu (bottom-right) --- */
+
+.hud-actions {
+  bottom: 20px;
+  position: fixed;
+  right: 20px;
+}
+
+.action-toggle {
+  align-items: center;
+  background: var(--green-dark);
+  border: 2px solid var(--green-primary);
+  border-radius: 50%;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--font-display);
+  font-size: 20px;
+  height: 48px;
+  justify-content: center;
+  transition: all 0.2s ease;
+  width: 48px;
+}
+
+.action-toggle:hover {
+  background: var(--green-primary);
+  transform: scale(1.05);
+}
+
+.action-toggle.active {
+  background: var(--red-danger);
+  border-color: var(--red-danger);
+  transform: rotate(45deg);
+}
+
+.action-panel {
+  bottom: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: absolute;
+  right: 4px;
+}
+
+.action-btn {
+  align-items: center;
+  background: var(--bg-panel);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  height: 40px;
+  justify-content: center;
+  transition: all 0.2s ease;
+  width: 40px;
+}
+
+.action-btn:hover {
+  border-color: var(--green-primary);
+  transform: scale(1.1);
+}
+
+.action-btn .hud-resource-icon {
+  height: 18px;
+  width: 18px;
+}
+
+
+/* --- Settler Info Panel (center-bottom) --- */
+
+.settler-info {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  bottom: 20px;
+  box-shadow: var(--shadow-lg);
+  left: 50%;
+  min-width: 280px;
+  padding: 16px;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 110;
+}
+
+.settler-info-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+}
+
+.settler-name {
+  color: var(--gold-accent);
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+.settler-info-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.settler-info-close:hover {
+  color: var(--red-danger);
+}
+
+.settler-info-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settler-stat {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 9px;
+  min-width: 80px;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.stat-bar {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-sm);
+  flex: 1;
+  height: 12px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  border-radius: var(--radius-sm);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.health-bar {
+  background: var(--red-health);
+}
+
+.hunger-bar {
+  background: var(--orange-hunger);
+}
