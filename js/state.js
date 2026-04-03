@@ -43,6 +43,10 @@ const _state = {
   // ── Player Actions ──
   activeAction: null,     // 'dropWood', 'dropStone', etc. or null
 
+  // ── Population Growth ──
+  birthCooldown: 0,       // day/night cycles remaining until next birth is possible
+  notifications: [],      // Array of { text, time, duration }
+
   // ── UI ──
   selectedSettler: null,  // settler ID or null
   menuOpen: false,

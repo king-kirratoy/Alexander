@@ -85,8 +85,10 @@ class GameScene extends Phaser.Scene {
     this._camStart = { x: 0, y: 0 };
     this._enemySprites = {};
     this._prevPhase = null;
+    this._prevDayNumber = 1;
     this._deathNotifications = [];
     this._knockoutIndicators = {};
+    this._notificationTexts = [];
   }
 
   create() {
@@ -184,6 +186,16 @@ class GameScene extends Phaser.Scene {
     // ── Update settlers ─────────────────────────────────────
     updateSettlers(delta);
 
+    // ── Update population growth ───────────────────────────
+    if (typeof updatePopulationGrowth === 'function') {
+      updatePopulationGrowth(delta);
+    }
+
+    // ── Update farms (passive food) ────────────────────────
+    if (typeof updateFarms === 'function') {
+      updateFarms(delta);
+    }
+
     // ── Update settler sprites ──────────────────────────────
     this.updateSettlerSprites();
 
@@ -213,6 +225,7 @@ class GameScene extends Phaser.Scene {
     this.updateEnemySprites();
     this.updateKnockoutIndicators();
     this.updateDeathNotifications(delta);
+    this.updateNotifications();
 
     // ── Update HUD every 500ms ──────────────────────────────
     this._hudUpdateTimer += delta;
@@ -321,6 +334,14 @@ class GameScene extends Phaser.Scene {
         despawnAllEnemies();
       }
       this.clearAllEnemySprites();
+    }
+
+    // New day — handle day transition (birth cooldown, child growth)
+    if (_state.dayNumber !== this._prevDayNumber) {
+      this._prevDayNumber = _state.dayNumber;
+      if (typeof handleDayTransition === 'function') {
+        handleDayTransition();
+      }
     }
   }
 
@@ -552,6 +573,52 @@ class GameScene extends Phaser.Scene {
   }
 
 
+  // ── Notifications ──────────────────────────────────────────
+
+  updateNotifications() {
+    const now = Date.now();
+
+    // Remove expired notifications from state
+    for (let i = _state.notifications.length - 1; i >= 0; i--) {
+      const notif = _state.notifications[i];
+      if (now - notif.time >= notif.duration) {
+        _state.notifications.splice(i, 1);
+      }
+    }
+
+    // Destroy old text objects
+    for (const textObj of this._notificationTexts) {
+      textObj.destroy();
+    }
+    this._notificationTexts = [];
+
+    // Create text objects for active notifications
+    const cam = this.cameras.main;
+    const startY = 40;
+    const spacing = 30;
+
+    for (let i = 0; i < _state.notifications.length; i++) {
+      const notif = _state.notifications[i];
+      const elapsed = now - notif.time;
+      const remaining = notif.duration - elapsed;
+      const alpha = remaining < 500 ? remaining / 500 : 1;
+
+      const text = this.add.text(cam.width / 2, startY + i * spacing, notif.text, {
+        fontFamily: 'VT323',
+        fontSize: '22px',
+        color: '#ffdd44',
+        stroke: '#000000',
+        strokeThickness: 3,
+      }).setOrigin(0.5, 0.5);
+      text.setDepth(100);
+      text.setScrollFactor(0);
+      text.setAlpha(alpha);
+
+      this._notificationTexts.push(text);
+    }
+  }
+
+
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
@@ -620,6 +687,7 @@ class GameScene extends Phaser.Scene {
 
   createSettlerSprite(settler) {
     const color = SETTLER_COLORS[settler.gender];
+    const scale = settler.isChild ? 0.6 : 1.0;
     const gfx = this.add.graphics();
     gfx.setDepth(10);
 
@@ -636,6 +704,10 @@ class GameScene extends Phaser.Scene {
     gfx.fillStyle(hairColor, 1);
     gfx.slice(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
     gfx.fillPath();
+
+    if (settler.isChild) {
+      gfx.setScale(scale);
+    }
 
     const container = this.add.container(settler.x, settler.y, [gfx]);
     container.setDepth(10);
@@ -665,6 +737,7 @@ class GameScene extends Phaser.Scene {
     container.setData('activityLabel', activityText);
 
     container.setData('settlerName', settler.name);
+    container.setData('isChild', settler.isChild);
     this._settlerSprites[settler.id] = container;
     settler.sprite = container;
 
@@ -689,6 +762,11 @@ class GameScene extends Phaser.Scene {
           const deathName = container.getData('settlerName');
           if (deathName) {
             this.showDeathNotification(deathName);
+            _state.notifications.push({
+              text: 'RIP ' + deathName,
+              time: Date.now(),
+              duration: 3000,
+            });
           }
           container.destroy();
         }
@@ -697,12 +775,21 @@ class GameScene extends Phaser.Scene {
     }
 
     for (const settler of _state.settlers) {
-      const container = this._settlerSprites[settler.id];
+      let container = this._settlerSprites[settler.id];
       if (!container) {
         // New settler appeared — create sprite
         this.createSettlerSprite(settler);
         continue;
       }
+
+      // Recreate sprite when child grows into adult
+      if (container.getData('isChild') && !settler.isChild) {
+        container.destroy();
+        delete this._settlerSprites[settler.id];
+        this.createSettlerSprite(settler);
+        container = this._settlerSprites[settler.id];
+      }
+
       container.x = settler.x;
       container.y = settler.y;
 
@@ -936,6 +1023,8 @@ function startNewGame() {
   _state.selectedSettler = null;
   _state.cameraFollowing = null;
   _state.activeAction = null;
+  _state.birthCooldown = 0;
+  _state.notifications = [];
 
   // Start or restart Phaser
   if (_phaserGame) {

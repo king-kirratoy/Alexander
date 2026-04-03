@@ -76,6 +76,12 @@ function createSettler(col, row, isChild) {
     settler.speed = Math.floor(settler.speed * personality.mod);
   }
 
+  // Children have reduced stats
+  if (settler.isChild) {
+    settler.strength = Math.floor(settler.strength * 0.4);
+    settler.speed = Math.floor(settler.speed * 0.7);
+  }
+
   _state.settlers.push(settler);
   return settler;
 }
@@ -218,8 +224,8 @@ function updateSettlerAI(settler, delta) {
     }
   }
 
-  // Priority: FIGHT (90) — armed settlers engage enemies at night
-  if (typeof isNight === 'function' && isNight() && settler.equippedWeapon) {
+  // Priority: FIGHT (90) — armed settlers engage enemies at night (adults only)
+  if (!settler.isChild && typeof isNight === 'function' && isNight() && settler.equippedWeapon) {
     if (tryFight(settler)) {
       settler.aiCooldown = randInt(1000, 2000);
       return;
@@ -250,22 +256,29 @@ function updateSettlerAI(settler, delta) {
     }
   }
 
-  // Priority 3: BUILD (40) — only during day/dawn
-  if (typeof decideBuildPriority === 'function') {
+  // Priority 3: BUILD (40) — only during day/dawn (adults only)
+  if (!settler.isChild && typeof decideBuildPriority === 'function') {
     if (tryBuild(settler)) {
       settler.aiCooldown = randInt(1000, 2000);
       return;
     }
   }
 
-  // Priority 3: GATHER (30)
-  if (tryGather(settler)) {
-    settler.aiCooldown = randInt(1000, 2000);
-    return;
+  // Priority 3: GATHER (30) — children can only forage (food)
+  if (settler.isChild) {
+    if (tryForageChild(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  } else {
+    if (tryGather(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
   }
 
-  // Priority 4: CRAFT (20)
-  if (typeof decideWhatToCraft === 'function') {
+  // Priority 4: CRAFT (20) — adults only
+  if (!settler.isChild && typeof decideWhatToCraft === 'function') {
     if (tryCraft(settler)) {
       settler.aiCooldown = randInt(1000, 2000);
       return;
@@ -486,6 +499,17 @@ function tryBuild(settler) {
     if (!buildType) return false;
     if (typeof canAffordBuilding !== 'function' || !canAffordBuilding(buildType)) return false;
 
+    // Check population unlock
+    const bDef = BUILDING_DEFS[buildType];
+    if (bDef && bDef.unlockPop && _state.settlers.filter(s => !s.isDead).length < bDef.unlockPop) return false;
+
+    // Check requires (prerequisite buildings)
+    if (bDef && bDef.requires) {
+      for (const req of bDef.requires) {
+        if (typeof hasBuilding === 'function' && !hasBuilding(req)) return false;
+      }
+    }
+
     // Find a build site
     const centerCol = Math.floor(WORLD_COLS / 2);
     const centerRow = Math.floor(WORLD_ROWS / 2);
@@ -684,6 +708,29 @@ function handleCrafting(settler, delta) {
 
 
 /**
+ * Children can only forage berry bushes (food gathering).
+ * Returns true if action taken.
+ */
+function tryForageChild(settler) {
+  if (typeof findNearestResource !== 'function') return false;
+
+  const berryBush = findNearestResource(settler.col, settler.row, 'food');
+  if (!berryBush) return false;
+
+  const path = findPath(settler.col, settler.row, berryBush.col, berryBush.row);
+  if (!path || path.length === 0) return false;
+
+  settler.path = path;
+  settler.pathIndex = 0;
+  settler.gatherProgress = 0;
+  settler.currentPriority = AI_PRIORITY.GATHER;
+  settler.currentActivity = 'walking';
+  settler.currentTask = { type: 'gathering', targetId: berryBush.id };
+  return true;
+}
+
+
+/**
  * Auto-equip the best available tool for a gather task.
  */
 function autoEquipTool(settler, natureObj) {
@@ -732,8 +779,8 @@ function tryWander(settler) {
  * Armed settlers guard instead. Returns true if action taken.
  */
 function trySleep(settler) {
-  // Armed settlers guard instead of sleeping
-  if (settler.equippedWeapon) {
+  // Armed adult settlers guard instead of sleeping
+  if (!settler.isChild && settler.equippedWeapon) {
     return tryGuard(settler);
   }
 
@@ -1141,10 +1188,107 @@ function getSettlerById(id) {
 }
 
 
+/**
+ * Track population growth. Called each frame.
+ * Birth conditions: 2+ adults, shelter with capacity, food >= 10.
+ * Cooldown is in day/night cycles, tracked by _state.birthCooldown.
+ */
+function updatePopulationGrowth(delta) {
+  // birthCooldown is decremented in handleDayTransition, not here
+  if (_state.birthCooldown > 0) return;
+
+  // Need at least 2 living adults
+  const adults = _state.settlers.filter(s => !s.isChild && !s.isDead && !s.isKnockedOut);
+  if (adults.length < 2) return;
+
+  // Need food >= 10
+  if (_state.resources.food < 10) return;
+
+  // Find a hut or house with available capacity
+  let shelterBuilding = null;
+  for (const b of _state.buildings) {
+    if (b.phase < BUILD_PHASE.COMPLETE) continue;
+    const def = BUILDING_DEFS[b.type];
+    if (!def || !def.provides || !def.provides.includes('shelter')) continue;
+    if (def.capacity <= 0) continue;
+    if (b.occupants.length < def.capacity) {
+      shelterBuilding = b;
+      break;
+    }
+  }
+  if (!shelterBuilding) return;
+
+  // Birth! Create a child at the shelter building's position
+  _state.resources.food -= 5;
+  const child = createSettler(shelterBuilding.col, shelterBuilding.row, true);
+
+  // Set cooldown to 3-5 day/night cycles
+  _state.birthCooldown = randInt(3, 5);
+
+  // Push birth notification
+  _state.notifications.push({
+    text: child.name + ' was born!',
+    time: Date.now(),
+    duration: 3000,
+  });
+}
+
+
+/**
+ * Called when a new day begins (dayNumber increments).
+ * Decrements birth cooldown and ages children.
+ */
+function handleDayTransition() {
+  // Decrement birth cooldown
+  if (_state.birthCooldown > 0) {
+    _state.birthCooldown--;
+  }
+
+  // Age children
+  updateChildGrowth();
+}
+
+
+/**
+ * Age all children by 1 day. When age reaches 5, they become adults.
+ */
+function updateChildGrowth() {
+  for (const settler of _state.settlers) {
+    if (!settler.isChild || settler.isDead) continue;
+
+    settler.age++;
+
+    if (settler.age >= 5) {
+      // Grow into adult
+      settler.isChild = false;
+      settler.strength = SETTLER_BASE_STATS.strength + randInt(-3, 3);
+      settler.speed = SETTLER_BASE_STATS.speed + randInt(-10, 10);
+
+      // Re-apply personality modifiers
+      if (settler.personality.effect === 'maxHealth') {
+        settler.maxHealth = Math.floor(SETTLER_BASE_STATS.maxHealth * settler.personality.mod);
+        settler.health = Math.min(settler.health, settler.maxHealth);
+      }
+      if (settler.personality.effect === 'moveSpeed') {
+        settler.speed = Math.floor(settler.speed * settler.personality.mod);
+      }
+
+      _state.notifications.push({
+        text: settler.name + ' has grown up!',
+        time: Date.now(),
+        duration: 3000,
+      });
+    }
+  }
+}
+
+
 // ── Public API ────────────────────────────────────────────────
 window.AX.characters = {
   createSettler,
   spawnStartingSettlers,
   updateSettlers,
   getSettlerById,
+  updatePopulationGrowth,
+  handleDayTransition,
 };

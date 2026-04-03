@@ -126,10 +126,32 @@ function updateNatureObjects(currentTime) {
 }
 
 
+/**
+ * Update farms — completed farms passively generate food during daytime.
+ * foodRate is per second (0.05 = 1 food every 20 seconds per farm).
+ */
+function updateFarms(delta) {
+  // Only produce food during daytime
+  if (typeof isNight === 'function' && isNight()) return;
+  if (typeof isDusk === 'function' && isDusk()) return;
+
+  for (const b of _state.buildings) {
+    if (b.type !== BUILDING.FARM) continue;
+    if (b.phase < BUILD_PHASE.COMPLETE) continue;
+
+    const def = BUILDING_DEFS[b.type];
+    if (!def || !def.foodRate) continue;
+
+    _state.resources.food += def.foodRate * (delta / 1000);
+  }
+}
+
+
 // ── Public API ────────────────────────────────────────────────
 window.AX.resources = {
   findNearestResource,
   findNearestAnyResource,
   harvestObject,
   updateNatureObjects,
+  updateFarms,
 };
