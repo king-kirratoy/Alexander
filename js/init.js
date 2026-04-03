@@ -97,23 +97,26 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    // ── Generate world ──────────────────────────────────────
-    const seed = Date.now();
-    generateWorld(seed);
-    initPathfinding();
+    const isLoadedFromSave = _state.gameStarted && _state.tileMap.length > 0;
 
-    // ── Render tile map ─────────────────────────────────────
-    this.renderTileMap();
-
-    // ── Render nature objects ───────────────────────────────
-    this.renderNatureObjects();
-
-    // ── Render buildings ────────────────────────────────────
-    this.renderBuildings();
-
-    // ── Spawn settlers ──────────────────────────────────────
-    spawnStartingSettlers();
-    this.createSettlerSprites();
+    if (isLoadedFromSave) {
+      // ── Loading from save — skip generation ───────────────
+      initPathfinding();
+      this.renderTileMap();
+      this.renderNatureObjects();
+      this.renderBuildings();
+      this.createSettlerSprites();
+    } else {
+      // ── New game — generate fresh world ───────────────────
+      const seed = Date.now();
+      generateWorld(seed);
+      initPathfinding();
+      this.renderTileMap();
+      this.renderNatureObjects();
+      this.renderBuildings();
+      spawnStartingSettlers();
+      this.createSettlerSprites();
+    }
 
     // ── Camera setup ────────────────────────────────────────
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -171,8 +174,8 @@ class GameScene extends Phaser.Scene {
     this._nightOverlay.setDepth(50);
     this._nightOverlay.setVisible(false);
 
-    // ── Initialize day/night cycle ─────────────────────────
-    if (typeof initDayNight === 'function') {
+    // ── Initialize day/night cycle (skip on load — resume from saved cycleTime) ──
+    if (!isLoadedFromSave && typeof initDayNight === 'function') {
       initDayNight();
     }
 
@@ -1264,6 +1267,10 @@ function startNewGame() {
 function stopGame() {
   _state.gameRunning = false;
   _state.gameStarted = false;
+
+  if (typeof stopAutosave === 'function') {
+    stopAutosave();
+  }
 
   if (_phaserGame) {
     _phaserGame.destroy(true);
