@@ -23,17 +23,13 @@ function updateHUD() {
     el('hudDay').textContent = 'Dawn';
   }
 
-  // Update day icon color based on phase
+  // Update day icon image based on phase
   const dayIcon = document.querySelector('.hud-icon-day');
   if (dayIcon) {
-    if (phase === DAY_PHASE.DAY) {
-      dayIcon.style.background = 'var(--gold-accent)';
-    } else if (phase === DAY_PHASE.DUSK) {
-      dayIcon.style.background = '#d87030';
-    } else if (phase === DAY_PHASE.NIGHT) {
-      dayIcon.style.background = '#2a2a5a';
-    } else if (phase === DAY_PHASE.DAWN) {
-      dayIcon.style.background = '#6688bb';
+    if (phase === DAY_PHASE.NIGHT || phase === DAY_PHASE.DUSK) {
+      dayIcon.style.backgroundImage = "url('assets/sprites/individual/icons/icon_moon.png')";
+    } else {
+      dayIcon.style.backgroundImage = "url('assets/sprites/individual/icons/icon_sun.png')";
     }
   }
 }

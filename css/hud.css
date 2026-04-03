@@ -36,39 +36,42 @@
 }
 
 .hud-resource-icon {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
   height: 20px;
   image-rendering: pixelated;
   width: 20px;
 }
 
 .hud-icon-wood {
-  background: var(--brown-primary);
-  border-radius: 2px;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_wood.png');
 }
 
 .hud-icon-stone {
-  background: var(--iron-gray);
-  border-radius: 50%;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_stone.png');
 }
 
 .hud-icon-food {
-  background: var(--red-danger);
-  border-radius: 50%;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_food.png');
 }
 
 .hud-icon-iron {
-  background: #505060;
-  border-radius: 2px;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_iron.png');
 }
 
 .hud-icon-pop {
-  background: var(--green-primary);
-  border-radius: 50% 50% 4px 4px;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_person.png');
 }
 
 .hud-icon-day {
-  background: var(--gold-accent);
-  border-radius: 50%;
+  background-color: transparent;
+  background-image: url('../assets/sprites/individual/icons/icon_sun.png');
 }
 
 .hud-resource span,

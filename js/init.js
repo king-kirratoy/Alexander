@@ -246,11 +246,6 @@ class GameScene extends Phaser.Scene {
     this._deathNotifications = [];
     this._knockoutIndicators = {};
     this._notificationTexts = [];
-    this._minimapGraphics = null;
-    this._minimapBg = null;
-    this._minimapViewport = null;
-    this._minimapTimer = 0;
-    this._minimapContainer = null;
     // Visual feedback (Phase 10)
     this._settlerHealthBars = {};
     this._buildingProgressBars = {};
@@ -369,9 +364,6 @@ class GameScene extends Phaser.Scene {
     showHUD();
     updateHUD();
 
-    // ── Initialize minimap ───────────────────────────────────
-    this.initMinimap();
-
     // ── Initialize camera system ──────────────────────────────
     if (typeof initCamera === 'function') {
       initCamera(this);
@@ -483,21 +475,6 @@ class GameScene extends Phaser.Scene {
       this.cullOffscreenNature();
     }
 
-    // ── Update minimap every 500ms ─────────────────────────
-    this._minimapTimer += delta;
-    if (this._minimapTimer > 500) {
-      this._minimapTimer = 0;
-      this.updateMinimap();
-    }
-    this.updateMinimapViewport();
-
-    // Reposition minimap on window resize
-    if (this._minimapContainer) {
-      const expectedY = this.cameras.main.height - 135 - 10;
-      if (Math.abs(this._minimapContainer.y - expectedY) > 1) {
-        this._minimapContainer.y = expectedY;
-      }
-    }
   }
 
 
@@ -1334,136 +1311,6 @@ class GameScene extends Phaser.Scene {
       }
       hideSettlerInfo();
     }
-  }
-
-
-  // ── Minimap ─────────────────────────────────────────────────
-
-  initMinimap() {
-    const MINIMAP_W = 180;
-    const MINIMAP_H = 135;
-    const PADDING = 10;
-
-    // Container positioned bottom-left, fixed to camera
-    this._minimapContainer = this.add.container(PADDING, this.cameras.main.height - MINIMAP_H - PADDING);
-    this._minimapContainer.setDepth(110);
-    this._minimapContainer.setScrollFactor(0);
-
-    // Semi-transparent background
-    this._minimapBg = this.add.graphics();
-    this._minimapBg.fillStyle(0x111122, 0.85);
-    this._minimapBg.fillRect(-2, -2, MINIMAP_W + 4, MINIMAP_H + 4);
-    this._minimapBg.lineStyle(1, 0x888888, 0.6);
-    this._minimapBg.strokeRect(-2, -2, MINIMAP_W + 4, MINIMAP_H + 4);
-    this._minimapContainer.add(this._minimapBg);
-
-    // Minimap content graphics
-    this._minimapGraphics = this.add.graphics();
-    this._minimapContainer.add(this._minimapGraphics);
-
-    // Viewport rectangle
-    this._minimapViewport = this.add.graphics();
-    this._minimapContainer.add(this._minimapViewport);
-
-    // Make minimap interactive for click-to-move
-    const hitArea = new Phaser.Geom.Rectangle(0, 0, MINIMAP_W, MINIMAP_H);
-    this._minimapContainer.setSize(MINIMAP_W, MINIMAP_H);
-    this._minimapContainer.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
-
-    this._minimapContainer.on('pointerdown', (pointer) => {
-      const localX = pointer.x - this._minimapContainer.x;
-      const localY = pointer.y - this._minimapContainer.y;
-      const worldX = (localX / MINIMAP_W) * WORLD_WIDTH;
-      const worldY = (localY / MINIMAP_H) * WORLD_HEIGHT;
-      this.cameras.main.centerOn(worldX, worldY);
-
-      // Cancel follow mode
-      if (_state.cameraFollowing !== null && typeof stopFollowCamera === 'function') {
-        stopFollowCamera();
-      }
-    });
-
-    // Initial draw
-    this.updateMinimap();
-  }
-
-
-  updateMinimap() {
-    if (!this._minimapGraphics) return;
-    this._minimapGraphics.clear();
-
-    const MINIMAP_W = 180;
-    const MINIMAP_H = 135;
-    const scaleX = MINIMAP_W / WORLD_COLS;
-    const scaleY = MINIMAP_H / WORLD_ROWS;
-
-    // Draw terrain — sample every tile as a small rectangle
-    for (let row = 0; row < WORLD_ROWS; row++) {
-      for (let col = 0; col < WORLD_COLS; col++) {
-        const tileType = _state.tileMap[row][col];
-        const color = TILE_COLORS[tileType] || 0x333333;
-        this._minimapGraphics.fillStyle(color, 1);
-        this._minimapGraphics.fillRect(
-          col * scaleX, row * scaleY,
-          Math.ceil(scaleX), Math.ceil(scaleY)
-        );
-      }
-    }
-
-    // Draw buildings (brown/tan dots)
-    for (const b of _state.buildings) {
-      const def = BUILDING_DEFS[b.type];
-      if (!def) continue;
-      const bColor = BUILDING_COLORS[b.type] || 0x888888;
-      this._minimapGraphics.fillStyle(bColor, 1);
-      this._minimapGraphics.fillRect(
-        b.col * scaleX, b.row * scaleY,
-        def.size.w * scaleX, def.size.h * scaleY
-      );
-    }
-
-    // Draw settlers (green dots)
-    for (const settler of _state.settlers) {
-      const tile = worldToTile(settler.x, settler.y);
-      this._minimapGraphics.fillStyle(0x44ff44, 1);
-      this._minimapGraphics.fillCircle(
-        tile.col * scaleX + scaleX / 2,
-        tile.row * scaleY + scaleY / 2,
-        1.5
-      );
-    }
-
-    // Draw enemies (red dots) during night
-    if (typeof isNight === 'function' && (isNight() || isDusk())) {
-      for (const enemy of _state.enemies) {
-        if (enemy.isDead) continue;
-        const tile = worldToTile(enemy.x, enemy.y);
-        this._minimapGraphics.fillStyle(0xff4444, 1);
-        this._minimapGraphics.fillCircle(
-          tile.col * scaleX + scaleX / 2,
-          tile.row * scaleY + scaleY / 2,
-          1.5
-        );
-      }
-    }
-  }
-
-
-  updateMinimapViewport() {
-    if (!this._minimapViewport) return;
-    this._minimapViewport.clear();
-
-    const MINIMAP_W = 180;
-    const MINIMAP_H = 135;
-    const cam = this.cameras.main;
-
-    const vx = (cam.scrollX / WORLD_WIDTH) * MINIMAP_W;
-    const vy = (cam.scrollY / WORLD_HEIGHT) * MINIMAP_H;
-    const vw = (cam.width / cam.zoom / WORLD_WIDTH) * MINIMAP_W;
-    const vh = (cam.height / cam.zoom / WORLD_HEIGHT) * MINIMAP_H;
-
-    this._minimapViewport.lineStyle(1, 0xffffff, 0.8);
-    this._minimapViewport.strokeRect(vx, vy, vw, vh);
   }
 
 
