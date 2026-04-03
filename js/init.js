@@ -240,10 +240,11 @@ class GameScene extends Phaser.Scene {
     gfx.fillStyle(0xf0c8a0, 1);
     gfx.fillCircle(0, -10, 7);
 
-    // Hair
+    // Hair (top half of head)
     const hairColor = settler.gender === 'male' ? 0x5a3a1a : 0x6a3020;
     gfx.fillStyle(hairColor, 1);
-    gfx.fillArc(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
+    gfx.slice(0, -10, 7, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(360), false);
+    gfx.fillPath();
 
     const container = this.add.container(settler.x, settler.y, [gfx]);
     container.setDepth(10);
