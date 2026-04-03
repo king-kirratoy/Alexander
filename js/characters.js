@@ -55,6 +55,9 @@ function createSettler(col, row, isChild) {
     statusIcon: null,
     direction: 'down', // 'up', 'down', 'left', 'right'
 
+    // Shelter
+    shelterBuildingId: null,
+
     // Flags
     isKnockedOut: false,
     knockedOutAt: null,
@@ -104,10 +107,11 @@ function updateSettlers(delta) {
   for (const settler of _state.settlers) {
     if (settler.isKnockedOut) continue;
 
-    // Drain hunger
-    settler.hunger -= HUNGER_DRAIN_RATE * (delta / 1000);
+    // Drain hunger (75% reduced when sleeping)
+    const hungerMod = settler.currentActivity === 'sleeping' ? 0.25 : 1;
+    settler.hunger -= HUNGER_DRAIN_RATE * hungerMod * (delta / 1000);
     if (settler.personality.effect === 'hungerRate') {
-      settler.hunger -= HUNGER_DRAIN_RATE * (settler.personality.mod - 1) * (delta / 1000);
+      settler.hunger -= HUNGER_DRAIN_RATE * (settler.personality.mod - 1) * hungerMod * (delta / 1000);
     }
     settler.hunger = clamp(settler.hunger, 0, settler.maxHunger);
 
@@ -163,6 +167,16 @@ function updateSettlerAI(settler, delta) {
     if (handleCrafting(settler, delta)) return;
   }
 
+  // If sleeping, keep sleeping until dawn
+  if (settler.currentTask && settler.currentTask.type === 'sleeping') {
+    if (handleSleeping(settler, delta)) return;
+  }
+
+  // If guarding, keep guarding until dawn
+  if (settler.currentTask && settler.currentTask.type === 'guarding') {
+    if (handleGuarding(settler, delta)) return;
+  }
+
   // If still moving toward a destination, keep going
   if (settler.path && settler.pathIndex < settler.path.length) return;
 
@@ -179,7 +193,15 @@ function updateSettlerAI(settler, delta) {
     }
   }
 
-  // Priority 2: BUILD (40)
+  // Priority 2: SLEEP (70) — during dusk/night
+  if (typeof isDusk === 'function' && (isDusk() || isNight())) {
+    if (trySleep(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
+  // Priority 3: BUILD (40) — only during day/dawn
   if (typeof decideBuildPriority === 'function') {
     if (tryBuild(settler)) {
       settler.aiCooldown = randInt(1000, 2000);
@@ -653,6 +675,170 @@ function tryWander(settler) {
   settler.currentActivity = 'idle';
   settler.currentTask = null;
   settler.currentPriority = AI_PRIORITY.IDLE;
+}
+
+
+/**
+ * Try to find shelter and sleep during dusk/night.
+ * Armed settlers guard instead. Returns true if action taken.
+ */
+function trySleep(settler) {
+  // Armed settlers guard instead of sleeping
+  if (settler.equippedWeapon) {
+    return tryGuard(settler);
+  }
+
+  // Find nearest shelter (hut or house) with available capacity
+  let bestBuilding = null;
+  let bestDist = Infinity;
+
+  for (const b of _state.buildings) {
+    if (b.phase < BUILD_PHASE.COMPLETE) continue;
+    const def = BUILDING_DEFS[b.type];
+    if (!def || def.capacity <= 0) continue;
+    if (!def.provides || !def.provides.includes('shelter')) continue;
+
+    // Check if there's room
+    if (b.occupants.length >= def.capacity) continue;
+
+    const d = dist(settler.col, settler.row, b.col, b.row);
+    if (d < bestDist) {
+      bestDist = d;
+      bestBuilding = b;
+    }
+  }
+
+  if (bestBuilding) {
+    // Path to the building
+    const path = findPath(settler.col, settler.row, bestBuilding.col, bestBuilding.row);
+    if (path && path.length > 0) {
+      settler.path = path;
+      settler.pathIndex = 0;
+    }
+    settler.currentTask = { type: 'sleeping', targetId: bestBuilding.id };
+    settler.currentActivity = 'walking';
+    settler.currentPriority = AI_PRIORITY.SLEEP;
+    return true;
+  }
+
+  // No shelter — stay near campfire
+  const campfires = _state.buildings.filter(b =>
+    b.type === BUILDING.CAMPFIRE && b.phase >= BUILD_PHASE.COMPLETE
+  );
+  if (campfires.length > 0) {
+    const fire = campfires[0];
+    const d = dist(settler.col, settler.row, fire.col, fire.row);
+    if (d > 3) {
+      const path = findPath(settler.col, settler.row, fire.col, fire.row);
+      if (path && path.length > 0) {
+        settler.path = path;
+        settler.pathIndex = 0;
+      }
+    }
+    settler.currentTask = { type: 'sleeping', targetId: null };
+    settler.currentActivity = 'sleeping';
+    settler.currentPriority = AI_PRIORITY.SLEEP;
+    return true;
+  }
+
+  return false;
+}
+
+
+/**
+ * Handle sleeping — settler stays in building until dawn.
+ * Returns true if still sleeping.
+ */
+function handleSleeping(settler, delta) {
+  // Wake up at dawn
+  if (typeof isDawn === 'function' && isDawn()) {
+    wakeSettler(settler);
+    return false;
+  }
+
+  // If still walking to shelter, keep going
+  if (settler.path && settler.pathIndex < settler.path.length) {
+    return true;
+  }
+
+  // Arrived at shelter — enter building
+  if (settler.currentTask.targetId && !settler.shelterBuildingId) {
+    const building = _state.buildings.find(b => b.id === settler.currentTask.targetId);
+    if (building) {
+      const def = BUILDING_DEFS[building.type];
+      if (def && building.occupants.length < def.capacity) {
+        building.occupants.push(settler.id);
+        settler.shelterBuildingId = building.id;
+      }
+    }
+  }
+
+  settler.currentActivity = 'sleeping';
+  settler.path = null;
+  settler.pathIndex = 0;
+  return true;
+}
+
+
+/**
+ * Wake a settler from sleep — remove from building occupants.
+ */
+function wakeSettler(settler) {
+  if (settler.shelterBuildingId) {
+    const building = _state.buildings.find(b => b.id === settler.shelterBuildingId);
+    if (building) {
+      building.occupants = building.occupants.filter(id => id !== settler.id);
+    }
+    settler.shelterBuildingId = null;
+  }
+  clearTask(settler);
+}
+
+
+/**
+ * Try to guard the settlement perimeter (armed settlers during night).
+ */
+function tryGuard(settler) {
+  // Patrol near the settlement center
+  const centerCol = Math.floor(WORLD_COLS / 2);
+  const centerRow = Math.floor(WORLD_ROWS / 2);
+  const patrolRadius = 8;
+  const targetCol = centerCol + randInt(-patrolRadius, patrolRadius);
+  const targetRow = centerRow + randInt(-patrolRadius, patrolRadius);
+
+  if (inBounds(targetCol, targetRow) && isWalkable(targetCol, targetRow)) {
+    const path = findPath(settler.col, settler.row, targetCol, targetRow);
+    if (path && path.length > 0) {
+      settler.path = path;
+      settler.pathIndex = 0;
+    }
+  }
+
+  settler.currentTask = { type: 'guarding' };
+  settler.currentActivity = 'guarding';
+  settler.currentPriority = AI_PRIORITY.SLEEP;
+  return true;
+}
+
+
+/**
+ * Handle guarding — patrol until dawn.
+ * Returns true if still guarding.
+ */
+function handleGuarding(settler, delta) {
+  // Stop guarding at dawn
+  if (typeof isDawn === 'function' && isDawn()) {
+    clearTask(settler);
+    return false;
+  }
+
+  // If done with current patrol path, pick a new patrol point
+  if (!settler.path || settler.pathIndex >= settler.path.length) {
+    settler.aiCooldown = 0;
+    return false; // Let AI re-evaluate (will pick trySleep → tryGuard again)
+  }
+
+  return true;
 }
 
 

@@ -10,7 +10,32 @@ function updateHUD() {
   el('hudFood').textContent = Math.floor(_state.resources.food);
   el('hudIron').textContent = Math.floor(_state.resources.iron);
   el('hudPopulation').textContent = _state.settlers.length;
-  el('hudDay').textContent = 'Day ' + _state.dayNumber;
+
+  // Phase-appropriate day display
+  const phase = _state.currentPhase;
+  if (phase === DAY_PHASE.DAY) {
+    el('hudDay').textContent = 'Day ' + _state.dayNumber;
+  } else if (phase === DAY_PHASE.DUSK) {
+    el('hudDay').textContent = 'Dusk';
+  } else if (phase === DAY_PHASE.NIGHT) {
+    el('hudDay').textContent = 'Night ' + _state.dayNumber;
+  } else if (phase === DAY_PHASE.DAWN) {
+    el('hudDay').textContent = 'Dawn';
+  }
+
+  // Update day icon color based on phase
+  const dayIcon = document.querySelector('.hud-icon-day');
+  if (dayIcon) {
+    if (phase === DAY_PHASE.DAY) {
+      dayIcon.style.background = 'var(--gold-accent)';
+    } else if (phase === DAY_PHASE.DUSK) {
+      dayIcon.style.background = '#d87030';
+    } else if (phase === DAY_PHASE.NIGHT) {
+      dayIcon.style.background = '#2a2a5a';
+    } else if (phase === DAY_PHASE.DAWN) {
+      dayIcon.style.background = '#6688bb';
+    }
+  }
 }
 
 
