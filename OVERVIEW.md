@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v1.3
+**Current version:** v1.5
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -15,7 +15,7 @@ Last updated: April 3, 2026 (Central Time)
 | `css/base.css` | CSS variables (colors, fonts, spacing, borders), reset, base body styles, shared button/input/label components, `.hidden` utility. |
 | `css/hud.css` | HUD overlay positioning, resource bar, population/day display, menu button, action panel, settler info panel with stat bars. |
 | `css/menus.css` | Main menu layout (title, username input, new/continue buttons), in-game menu overlay with resume/settings/exit options. |
-| `js/constants.js` | Game config: tile size (64px), world size (80×60), tile type enum, nature object types, harvestable definitions, resource types, camera limits, day/night timing, settler names/personalities/base stats, AI priority values, building definitions, crafting recipes, enemy definitions, save config. Global namespace `window.AX` defined here. |
+| `js/constants.js` | Game config: tile size (64px), world size (40×30, 2560×1920 pixels), tile type enum, nature object types, harvestable definitions, resource types, camera limits, day/night timing, settler names/personalities/base stats, AI priority values, building definitions, crafting recipes, enemy definitions, save config. Global namespace `window.AX` defined here. |
 | `js/state.js` | Global mutable state object `_state`: game meta (username, day, phase), tile map array, nature objects, settlers, buildings, resources, enemies, inventory, camera/UI state, population growth (birthCooldown, notifications). |
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
@@ -41,7 +41,7 @@ Last updated: April 3, 2026 (Central Time)
 
 ### World Generation
 **Lives in:** `world.js`
-**What it does:** Generates an 80×60 tile map using layered Perlin-like noise for terrain (grass/dirt/water) and places nature objects (trees, rocks, bushes, iron ore) with density controlled by separate noise layers. Ensures a clear starting area at map center with minimum nearby resources.
+**What it does:** Generates a 40×30 tile map (2560×1920 pixels) using layered Perlin-like noise for terrain (grass/dirt/water) and places nature objects (trees, rocks, bushes, iron ore) with density controlled by separate noise layers. Ensures a clear starting area at map center with minimum nearby resources.
 **Connects to:** `constants.js` (tile types, nature types), `utils.js` (noise, random), `state.js` (stores map data)
 **Key functions:** `generateWorld(seed)`, `placeNatureObject()`, `getNatureAt()`, `ensureNearbyResources()`
 
@@ -95,7 +95,7 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
-**What it does:** Renders tiles to a single RenderTexture using individual 64×64 PNG textures (TILE_TEXTURE_MAP). Nature objects display as sprite Images loaded from `assets/sprites/individual/nature/` with type-specific display sizes (NATURE_DISPLAY_SIZE). Settlers use character sprites from `assets/sprites/individual/settlers/` with activity/direction-based texture swapping via `getSettlerTexture()`. Enemies use sprites from `assets/sprites/individual/enemies/` with idle/attack swapping. Hut and house buildings display construction phase sprites from `assets/sprites/individual/buildings/` (foundation/frame/complete); all other buildings remain as colored rectangles with opacity based on build phase. BootScene.preload() loads all individual PNGs directly — no runtime spritesheet slicing. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
+**What it does:** Renders tiles to a single RenderTexture (2560×1920, under 4096 browser limit) using individual PNG textures scaled to 64×64 via TILE_TEXTURE_MAP. Nature objects display as sprite Images loaded from `assets/sprites/individual/nature/` with type-specific display sizes (NATURE_DISPLAY_SIZE). Settlers use character sprites from `assets/sprites/individual/settlers/` with activity/direction-based texture swapping via `getSettlerTexture()`. Enemies use sprites from `assets/sprites/individual/enemies/` with idle/attack swapping. Hut and house buildings display construction phase sprites from `assets/sprites/individual/buildings/` (foundation/frame/complete); all other buildings remain as colored rectangles with opacity based on build phase. BootScene.preload() loads all individual PNGs directly — no runtime spritesheet slicing. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
 **Connects to:** All data systems via `_state`
 **Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`, `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
 
