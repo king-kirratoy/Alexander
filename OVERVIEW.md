@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.4
+**Current version:** v0.5
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -20,12 +20,12 @@ Last updated: April 3, 2026 (Central Time)
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
 | `js/pathfinding.js` | EasyStar.js integration. `initPathfinding()` builds walkability grid from tile map. `findPath()` returns synchronous A* path. `findNearestWalkable()` for fallback targeting. |
-| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: EAT (hunger < 30) → BUILD (place/construct buildings) → GATHER (lowest resource) → CRAFT (tools/weapons) → IDLE (wander). Settlers auto-equip best tools when gathering. Building and crafting tasks use continuation handlers. |
+| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: FLEE (100, unarmed near enemies) → FIGHT (90, armed engage enemies) → EAT (80) → RESCUE (60, revive knocked-out) → SLEEP (70) → BUILD (40) → GATHER (30) → CRAFT (20) → IDLE (0). Settlers auto-equip best tools when gathering. Guards interrupt patrol to engage enemies. |
 | `js/buildings.js` | Building creation, placement, and construction. `createBuilding()` adds buildings to state with phase tracking. `findBuildSite()` finds valid placement near existing buildings (clustering). `advanceBuild()` progresses construction through FOUNDATION → FRAME → WALLS → COMPLETE phases. `decideBuildPriority()` determines what to build next (campfire → storage → hut → workbench → more shelter). Query functions: `getBuildingAt()`, `getBuildingsOfType()`, `hasBuilding()`. |
 | `js/crafting.js` | Crafting system with tiered recipes. `getAvailableRecipes()` filters by tier (BASIC always, WORKBENCH/FORGE require buildings). `craftItem()` deducts costs and adds items to inventory. `findBestTool()`/`findBestWeapon()` search inventory by power. `decideWhatToCraft()` prioritizes tools (axe → pickaxe) then weapons, then upgrades. |
 | `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. |
-| `js/enemies.js` | Stub — Phase 5. |
-| `js/combat.js` | Stub — Phase 5. |
+| `js/enemies.js` | Enemy spawning and AI. `spawnEnemies()` spawns enemies at night edges, scaling with population. Enemy types unlock by day (zombie d1, skeleton d5, wolf d10). `updateEnemies()` handles pathfinding (2-3s cooldown), movement, and targeting. `despawnAllEnemies()` clears enemies at dawn. |
+| `js/combat.js` | Combat system. `processSettlerAttack()` (1s cooldown, strength+weapon damage) and `processEnemyAttack()` (1.5s cooldown). `checkSettlerKnockout()` handles knockout (lives>1) vs permadeath (lives<=1). `processRescue()` revives knocked-out settlers over 3s. `updateCombat()` runs per-frame combat loop. `destroyBuilding()` removes buildings at 0 hp. |
 | `js/dayNight.js` | Day/night cycle system. Tracks cycleTime and currentPhase (day/dusk/night/dawn). Calculates phase from cycle position using DAY_PHASE_RATIOS. Provides getDaylightTint() for overlay rendering and phase query helpers (isNight, isDusk, isDawn). |
 | `js/audio.js` | Stub — Phase 7. |
 | `js/camera.js` | Stub — camera controls are in GameScene for now. |
@@ -55,7 +55,7 @@ Last updated: April 3, 2026 (Central Time)
 **Lives in:** `characters.js`
 **What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry → BUILD structures → GATHER resources → CRAFT tools/weapons → IDLE wander. Settlers auto-equip best tools when starting gather tasks. Building and crafting tasks use continuation handlers that persist across frames.
 **Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `buildings.js` (build decisions, construction), `crafting.js` (craft decisions, tool lookup), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts)
-**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `handleBuilding()`, `handleCrafting()`, `tryBuild()`, `tryCraft()`, `autoEquipTool()`
+**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `handleBuilding()`, `handleCrafting()`, `tryBuild()`, `tryCraft()`, `autoEquipTool()`, `tryFight()`, `tryRescue()`, `handleFighting()`, `handleFleeing()`, `handleRescuing()`
 
 ### Buildings
 **Lives in:** `buildings.js`
@@ -75,6 +75,12 @@ Last updated: April 3, 2026 (Central Time)
 **Connects to:** `state.js` (nature objects, resource counts), `constants.js` (HARVESTABLE definitions)
 **Key functions:** `findNearestResource()`, `findNearestAnyResource()`, `harvestObject()`, `updateNatureObjects()`
 
+### Enemies & Combat
+**Lives in:** `enemies.js`, `combat.js`, `characters.js` (AI integration), `init.js` (rendering)
+**What it does:** Enemies spawn at map edges when night begins, scaling with population. Types unlock progressively (zombie d1, skeleton d5, wolf d10). Enemies pathfind toward settlers/buildings and attack on contact. Armed settlers automatically engage; unarmed settlers flee. Settlers can be knocked out (lives > 1) or permanently die (lives <= 1). Adjacent settlers can rescue knocked-out allies over 3 seconds. Walls and buildings take damage and can be destroyed.
+**Connects to:** `constants.js` (ENEMY_DEFS, ENEMY_TYPE, AI_PRIORITY), `state.js` (enemies array), `pathfinding.js` (path requests), `dayNight.js` (phase detection), `buildings.js` (wall targeting, building destruction), `crafting.js` (weapon lookup)
+**Key functions:** `spawnEnemies()`, `updateEnemies()`, `despawnAllEnemies()`, `updateCombat()`, `processSettlerAttack()`, `processEnemyAttack()`, `checkSettlerKnockout()`, `processRescue()`, `tryFight()`, `tryFlee()`, `tryRescue()`
+
 ### Day/Night Cycle
 **Lives in:** `dayNight.js`, `init.js` (GameScene overlay/lighting), `characters.js` (sleep behavior)
 **What it does:** Cycles through day (55%), dusk (10%), night (25%), and dawn (10%) phases over DAY_CYCLE_DURATION (12 minutes). Night overlay darkens the world with a semi-transparent tinted rectangle. Light sources (campfires, buildings) create soft glowing circles above the overlay. Settlers seek shelter and sleep during dusk/night; armed settlers patrol on guard duty. Sleeping reduces hunger drain by 75%.
@@ -85,7 +91,7 @@ Last updated: April 3, 2026 (Central Time)
 **Lives in:** `init.js` (GameScene class)
 **What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), buildings as colored rectangles with opacity based on build phase, settlers as colored shapes with name/activity labels. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers.
 **Connects to:** All data systems via `_state`
-**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `handleMapClick()`, `handleEdgeScroll()`
+**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `handleMapClick()`
 
 ### UI
 **Lives in:** `ui.js`, `events.js`
