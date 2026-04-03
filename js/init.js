@@ -78,6 +78,8 @@ class GameScene extends Phaser.Scene {
     this._settlerSprites = {};
     this._buildingSprites = {};
     this._hudUpdateTimer = 0;
+    this._nightOverlay = null;
+    this._lightGraphics = [];
     this._isDragging = false;
     this._dragStart = { x: 0, y: 0 };
     this._camStart = { x: 0, y: 0 };
@@ -147,6 +149,16 @@ class GameScene extends Phaser.Scene {
       }
     });
 
+    // ── Night overlay ──────────────────────────────────────
+    this._nightOverlay = this.add.graphics();
+    this._nightOverlay.setDepth(50);
+    this._nightOverlay.setVisible(false);
+
+    // ── Initialize day/night cycle ─────────────────────────
+    if (typeof initDayNight === 'function') {
+      initDayNight();
+    }
+
     // ── Show HUD ────────────────────────────────────────────
     showHUD();
     updateHUD();
@@ -177,6 +189,13 @@ class GameScene extends Phaser.Scene {
     // ── Update nature object visuals ────────────────────────
     this.updateNatureVisuals();
 
+    // ── Update day/night cycle ────────────────────────────
+    if (typeof updateDayNight === 'function') {
+      updateDayNight(delta);
+    }
+    this.updateNightOverlay();
+    this.updateLightSources();
+
     // ── Update HUD every 500ms ──────────────────────────────
     this._hudUpdateTimer += delta;
     if (this._hudUpdateTimer > 500) {
@@ -184,6 +203,81 @@ class GameScene extends Phaser.Scene {
       updateHUD();
       updateSettlerInfoPanel();
     }
+  }
+
+
+  // ── Night Overlay & Lighting ───────────────────────────────
+
+  updateNightOverlay() {
+    if (typeof getDaylightTint !== 'function') return;
+
+    const tint = getDaylightTint();
+    if (!tint) {
+      this._nightOverlay.setVisible(false);
+      return;
+    }
+
+    this._nightOverlay.clear();
+    this._nightOverlay.fillStyle(tint.color, tint.alpha);
+    this._nightOverlay.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this._nightOverlay.setVisible(true);
+  }
+
+
+  updateLightSources() {
+    // Clear previous light graphics
+    for (const lg of this._lightGraphics) {
+      lg.destroy();
+    }
+    this._lightGraphics = [];
+
+    if (typeof isNight !== 'function') return;
+    if (!isNight() && !isDusk() && !isDawn()) return;
+
+    // Calculate light intensity based on phase
+    let lightAlpha = 0;
+    if (typeof getDaylightTint === 'function') {
+      const tint = getDaylightTint();
+      if (tint) lightAlpha = tint.alpha;
+    }
+    if (lightAlpha < 0.1) return;
+
+    // Gather light source positions
+    const sources = [];
+
+    // Completed campfires — large radius
+    for (const b of _state.buildings) {
+      if (b.phase < BUILD_PHASE.COMPLETE) continue;
+      const def = BUILDING_DEFS[b.type];
+      if (!def) continue;
+      const cx = b.col * TILE_SIZE + (def.size.w * TILE_SIZE) / 2;
+      const cy = b.row * TILE_SIZE + (def.size.h * TILE_SIZE) / 2;
+
+      if (b.type === BUILDING.CAMPFIRE) {
+        sources.push({ x: cx, y: cy, radius: 150, color: 0xffaa44 });
+      } else {
+        sources.push({ x: cx, y: cy, radius: 100, color: 0xeebb66 });
+      }
+    }
+
+    // Draw light circles
+    for (const src of sources) {
+      const gfx = this.add.graphics();
+      gfx.setDepth(51);
+
+      // Draw concentric circles with decreasing alpha for soft glow
+      const steps = 8;
+      for (let i = steps; i >= 0; i--) {
+        const r = src.radius * (i / steps);
+        const a = (1 - i / steps) * 0.25 * (lightAlpha / 0.5);
+        gfx.fillStyle(src.color, a);
+        gfx.fillCircle(src.x, src.y, r);
+      }
+
+      this._lightGraphics.push(gfx);
+    }
+  }
+
 
   // ── Rendering ───────────────────────────────────────────────
 
@@ -320,7 +414,7 @@ class GameScene extends Phaser.Scene {
       const actLabel = container.getData('activityLabel');
       if (actLabel) {
         const act = settler.currentActivity;
-        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating' || act === 'building' || act === 'crafting') {
+        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating' || act === 'building' || act === 'crafting' || act === 'sleeping' || act === 'guarding') {
           actLabel.setText('[' + act + ']');
           actLabel.setVisible(true);
         } else {
@@ -502,6 +596,7 @@ class GameScene extends Phaser.Scene {
       hideSettlerInfo();
     }
   }
+}
 
 // ═══════════ GAME STARTUP ═══════════
 

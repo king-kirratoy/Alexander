@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.3
+**Current version:** v0.4
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -26,7 +26,7 @@ Last updated: April 3, 2026 (Central Time)
 | `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. |
 | `js/enemies.js` | Stub — Phase 5. |
 | `js/combat.js` | Stub — Phase 5. |
-| `js/dayNight.js` | Stub — Phase 4. |
+| `js/dayNight.js` | Day/night cycle system. Tracks cycleTime and currentPhase (day/dusk/night/dawn). Calculates phase from cycle position using DAY_PHASE_RATIOS. Provides getDaylightTint() for overlay rendering and phase query helpers (isNight, isDusk, isDawn). |
 | `js/audio.js` | Stub — Phase 7. |
 | `js/camera.js` | Stub — camera controls are in GameScene for now. |
 | `js/playerActions.js` | Stub — Phase 8. |
@@ -74,6 +74,12 @@ Last updated: April 3, 2026 (Central Time)
 **What it does:** Provides resource search and harvesting logic. Finds nearest harvestable nature objects by resource type or by most-needed resource. Harvests objects over time based on settler strength and tool power. Manages nature object depletion and regrowth timers.
 **Connects to:** `state.js` (nature objects, resource counts), `constants.js` (HARVESTABLE definitions)
 **Key functions:** `findNearestResource()`, `findNearestAnyResource()`, `harvestObject()`, `updateNatureObjects()`
+
+### Day/Night Cycle
+**Lives in:** `dayNight.js`, `init.js` (GameScene overlay/lighting), `characters.js` (sleep behavior)
+**What it does:** Cycles through day (55%), dusk (10%), night (25%), and dawn (10%) phases over DAY_CYCLE_DURATION (12 minutes). Night overlay darkens the world with a semi-transparent tinted rectangle. Light sources (campfires, buildings) create soft glowing circles above the overlay. Settlers seek shelter and sleep during dusk/night; armed settlers patrol on guard duty. Sleeping reduces hunger drain by 75%.
+**Connects to:** `constants.js` (DAY_PHASE, DAY_CYCLE_DURATION, DAY_PHASE_RATIOS), `state.js` (cycleTime, currentPhase, dayNumber), `buildings.js` (shelter capacity, occupants)
+**Key functions:** `initDayNight()`, `updateDayNight()`, `getCurrentPhase()`, `getDaylightTint()`, `isNight()`, `trySleep()`, `handleSleeping()`, `wakeSettler()`
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
