@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v1.5
+**Current version:** v1.6
 Last updated: April 3, 2026 (Central Time)
 
 ---
