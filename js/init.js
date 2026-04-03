@@ -185,11 +185,6 @@ class GameScene extends Phaser.Scene {
       updateSettlerInfoPanel();
     }
 
-    // ── Edge scrolling ──────────────────────────────────────
-    this.handleEdgeScroll();
-  }
-
-
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
@@ -507,29 +502,6 @@ class GameScene extends Phaser.Scene {
       hideSettlerInfo();
     }
   }
-
-
-  // ── Edge Scrolling ──────────────────────────────────────────
-
-  handleEdgeScroll() {
-    const pointer = this.input.activePointer;
-    const cam = this.cameras.main;
-    const speed = CAMERA_PAN_SPEED / cam.zoom;
-
-    if (pointer.x < CAMERA_EDGE_THRESHOLD) {
-      cam.scrollX -= speed;
-    } else if (pointer.x > this.scale.width - CAMERA_EDGE_THRESHOLD) {
-      cam.scrollX += speed;
-    }
-
-    if (pointer.y < CAMERA_EDGE_THRESHOLD) {
-      cam.scrollY -= speed;
-    } else if (pointer.y > this.scale.height - CAMERA_EDGE_THRESHOLD) {
-      cam.scrollY += speed;
-    }
-  }
-}
-
 
 // ═══════════ GAME STARTUP ═══════════
 
