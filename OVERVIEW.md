@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v1.2
+**Current version:** v1.3
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -16,7 +16,6 @@ Last updated: April 3, 2026 (Central Time)
 | `css/hud.css` | HUD overlay positioning, resource bar, population/day display, menu button, action panel, settler info panel with stat bars. |
 | `css/menus.css` | Main menu layout (title, username input, new/continue buttons), in-game menu overlay with resume/settings/exit options. |
 | `js/constants.js` | Game config: tile size (64px), world size (80×60), tile type enum, nature object types, harvestable definitions, resource types, camera limits, day/night timing, settler names/personalities/base stats, AI priority values, building definitions, crafting recipes, enemy definitions, save config. Global namespace `window.AX` defined here. |
-| `js/spriteLoader.js` | Sprite extraction utility. Defines SHEET_CONFIGS with grid dimensions and sprite names for all AI-generated spritesheets. `autoDetectSpriteGrid()` scans each grid cell's pixels to find the tightest non-background bounding box, fixing misalignment from irregular AI-generated spacing. `extractSpritesFromSheetAuto()` extracts each sprite using detected bounds, then runs `floodFillEdgeTransparent()` from edges to remove background bleed while preserving interior art. `extractAllSprites()` orchestrates auto-detection and extraction for all sheets. `hasSpriteTexture()` checks availability. Black backgrounds assumed for all sheets except hut_house.png (white). Exposed via `window.AX.spriteLoader`. |
 | `js/state.js` | Global mutable state object `_state`: game meta (username, day, phase), tile map array, nature objects, settlers, buildings, resources, enemies, inventory, camera/UI state, population growth (birthCooldown, notifications). |
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
@@ -96,7 +95,7 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
-**What it does:** Renders tiles to a single RenderTexture (colored rectangles, with sprite support when ground tile assets are available). Nature objects display as extracted sprite Images from nature_objects.png (fallback: colored circles). Settlers use extracted character sprites from settler_characters.png with activity/direction-based texture swapping (fallback: colored shapes). Enemies use extracted sprites from enemy_characters.png with idle/attack swapping (fallback: colored circles). Hut and house buildings display construction phase sprites from hut_house.png (foundation/frame/complete); all other buildings remain as colored rectangles with opacity based on build phase. UI icons extracted from icons_status.png (registered but not yet used in HUD). BootScene loads all spritesheets and extracts sprites via canvas-based extraction with white-to-transparent conversion. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
+**What it does:** Renders tiles to a single RenderTexture using individual 64×64 PNG textures (TILE_TEXTURE_MAP). Nature objects display as sprite Images loaded from `assets/sprites/individual/nature/` with type-specific display sizes (NATURE_DISPLAY_SIZE). Settlers use character sprites from `assets/sprites/individual/settlers/` with activity/direction-based texture swapping via `getSettlerTexture()`. Enemies use sprites from `assets/sprites/individual/enemies/` with idle/attack swapping. Hut and house buildings display construction phase sprites from `assets/sprites/individual/buildings/` (foundation/frame/complete); all other buildings remain as colored rectangles with opacity based on build phase. BootScene.preload() loads all individual PNGs directly — no runtime spritesheet slicing. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
 **Connects to:** All data systems via `_state`
 **Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`, `initMinimap()`, `updateMinimap()`, `updateMinimapViewport()`
 
@@ -135,7 +134,7 @@ Last updated: April 3, 2026 (Central Time)
 ## Script Load Order
 
 ```
-constants.js → spriteLoader.js → state.js → utils.js → world.js → pathfinding.js →
+constants.js → state.js → utils.js → world.js → pathfinding.js →
 characters.js → buildings.js → crafting.js → resources.js →
 enemies.js → combat.js → dayNight.js → audio.js → camera.js →
 playerActions.js → save.js → ui.js → events.js → init.js
@@ -157,7 +156,7 @@ playerActions.js → save.js → ui.js → events.js → init.js
 
 ## Notes
 
-- AI-generated spritesheets in `assets/sprites/` are extracted at runtime via canvas-based sprite extraction (spriteLoader.js). Nature objects, settlers, enemies, and hut/house buildings use extracted sprites. Ground tiles fall back to colored rectangles (ground_tiles.png is a placeholder). Other buildings (campfire, workbench, storage, forge, watchtower, walls, gate, farm) remain as colored shape placeholders.
+- Individual PNG sprites in `assets/sprites/individual/` are loaded directly by BootScene.preload() — no runtime spritesheet slicing. Tiles (64×64), nature objects, settlers, enemies, and hut/house buildings all use their own PNGs. Other buildings (campfire, workbench, storage, forge, watchtower, walls, gate, farm) remain as colored shape placeholders.
 - EasyStar.js runs in synchronous mode — no async path callbacks needed.
 - Depleted nature objects show visual changes: trees become stumps, rocks/iron hide, berry bushes lose berries. Regrowable objects restore after their timer.
 - All Phaser visual objects are created in GameScene. Data systems manage state only.
