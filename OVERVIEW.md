@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.5
+**Current version:** v0.6
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -16,14 +16,14 @@ Last updated: April 3, 2026 (Central Time)
 | `css/hud.css` | HUD overlay positioning, resource bar, population/day display, menu button, action panel, settler info panel with stat bars. |
 | `css/menus.css` | Main menu layout (title, username input, new/continue buttons), in-game menu overlay with resume/settings/exit options. |
 | `js/constants.js` | Game config: tile size (64px), world size (80×60), tile type enum, nature object types, harvestable definitions, resource types, camera limits, day/night timing, settler names/personalities/base stats, AI priority values, building definitions, crafting recipes, enemy definitions, save config. Global namespace `window.AX` defined here. |
-| `js/state.js` | Global mutable state object `_state`: game meta (username, day, phase), tile map array, nature objects, settlers, buildings, resources, enemies, inventory, camera/UI state. |
+| `js/state.js` | Global mutable state object `_state`: game meta (username, day, phase), tile map array, nature objects, settlers, buildings, resources, enemies, inventory, camera/UI state, population growth (birthCooldown, notifications). |
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
 | `js/pathfinding.js` | EasyStar.js integration. `initPathfinding()` builds walkability grid from tile map. `findPath()` returns synchronous A* path. `findNearestWalkable()` for fallback targeting. |
-| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: FLEE (100, unarmed near enemies) → FIGHT (90, armed engage enemies) → EAT (80) → RESCUE (60, revive knocked-out) → SLEEP (70) → BUILD (40) → GATHER (30) → CRAFT (20) → IDLE (0). Settlers auto-equip best tools when gathering. Guards interrupt patrol to engage enemies. |
-| `js/buildings.js` | Building creation, placement, and construction. `createBuilding()` adds buildings to state with phase tracking. `findBuildSite()` finds valid placement near existing buildings (clustering). `advanceBuild()` progresses construction through FOUNDATION → FRAME → WALLS → COMPLETE phases. `decideBuildPriority()` determines what to build next (campfire → storage → hut → workbench → more shelter). Query functions: `getBuildingAt()`, `getBuildingsOfType()`, `hasBuilding()`. |
+| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: FLEE → FIGHT → EAT → RESCUE → SLEEP → BUILD → GATHER → CRAFT → IDLE. Children (isChild) can only forage/eat/wander/sleep/flee. Population growth system: births every 3-5 day cycles when conditions met (2+ adults, shelter capacity, food >= 10). Children age each day and grow into adults at age 5. |
+| `js/buildings.js` | Building creation, placement, and construction. `createBuilding()` adds buildings to state with phase tracking. `findBuildSite()` finds valid placement near existing buildings (clustering). `advanceBuild()` progresses construction through FOUNDATION → FRAME → WALLS → COMPLETE phases. `decideBuildPriority()` determines what to build next: campfire → storage → hut → workbench → more shelter → house (pop 8) → farm (pop 6) → forge (pop 6 + iron) → watchtower (pop 10) → additional shelter/farms as needed. Respects unlockPop and requires fields. |
 | `js/crafting.js` | Crafting system with tiered recipes. `getAvailableRecipes()` filters by tier (BASIC always, WORKBENCH/FORGE require buildings). `craftItem()` deducts costs and adds items to inventory. `findBestTool()`/`findBestWeapon()` search inventory by power. `decideWhatToCraft()` prioritizes tools (axe → pickaxe) then weapons, then upgrades. |
-| `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. |
+| `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. `updateFarms()` generates passive food from completed farms during daytime (0.05/sec per farm). |
 | `js/enemies.js` | Enemy spawning and AI. `spawnEnemies()` spawns enemies at night edges, scaling with population. Enemy types unlock by day (zombie d1, skeleton d5, wolf d10). `updateEnemies()` handles pathfinding (2-3s cooldown), movement, and targeting. `despawnAllEnemies()` clears enemies at dawn. |
 | `js/combat.js` | Combat system. `processSettlerAttack()` (1s cooldown, strength+weapon damage) and `processEnemyAttack()` (1.5s cooldown). `checkSettlerKnockout()` handles knockout (lives>1) vs permadeath (lives<=1). `processRescue()` revives knocked-out settlers over 3s. `updateCombat()` runs per-frame combat loop. `destroyBuilding()` removes buildings at 0 hp. |
 | `js/dayNight.js` | Day/night cycle system. Tracks cycleTime and currentPhase (day/dusk/night/dawn). Calculates phase from cycle position using DAY_PHASE_RATIOS. Provides getDaylightTint() for overlay rendering and phase query helpers (isNight, isDusk, isDawn). |
@@ -33,7 +33,7 @@ Last updated: April 3, 2026 (Central Time)
 | `js/save.js` | Stub — Phase 9. |
 | `js/ui.js` | HUD update (`updateHUD` syncs resource/population counts), settler info panel show/hide, main menu show/hide, in-game menu toggle, action panel toggle. |
 | `js/events.js` | All DOM event listeners: main menu username input/buttons, HUD menu button, in-game menu buttons, action panel toggle, settler info close, Escape key handler. |
-| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop). `startNewGame()` and `stopGame()` lifecycle. `bootApp()` entry point wires events and shows main menu. |
+| `js/init.js` | Phaser game config and scene definitions. `BootScene` (asset loading placeholder), `GameScene` (tile rendering, nature object rendering, settler sprite creation with child scaling at 60%, camera drag/zoom/edge-scroll, settler click selection, per-frame update loop, notification display system). Handles phase transitions including day-change events for population growth. `startNewGame()` and `stopGame()` lifecycle. `bootApp()` entry point wires events and shows main menu. |
 
 ---
 
@@ -53,9 +53,9 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Settlers
 **Lives in:** `characters.js`
-**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry → BUILD structures → GATHER resources → CRAFT tools/weapons → IDLE wander. Settlers auto-equip best tools when starting gather tasks. Building and crafting tasks use continuation handlers that persist across frames.
-**Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `buildings.js` (build decisions, construction), `crafting.js` (craft decisions, tool lookup), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts)
-**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `handleBuilding()`, `handleCrafting()`, `tryBuild()`, `tryCraft()`, `autoEquipTool()`, `tryFight()`, `tryRescue()`, `handleFighting()`, `handleFleeing()`, `handleRescuing()`
+**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry → BUILD structures → GATHER resources → CRAFT tools/weapons → IDLE wander. Children (isChild) have restricted AI: only forage/eat/wander/sleep/flee. Population growth system triggers births when 2+ adults, shelter capacity, and food >= 10. Children age each day and grow into adults at age 5 with full randomized stats.
+**Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `buildings.js` (build decisions, construction, shelter capacity), `crafting.js` (craft decisions, tool lookup), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts, birthCooldown, notifications)
+**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `handleBuilding()`, `handleCrafting()`, `tryBuild()`, `tryCraft()`, `autoEquipTool()`, `tryFight()`, `tryRescue()`, `handleFighting()`, `handleFleeing()`, `handleRescuing()`, `updatePopulationGrowth()`, `handleDayTransition()`, `updateChildGrowth()`, `tryForageChild()`
 
 ### Buildings
 **Lives in:** `buildings.js`
@@ -71,9 +71,9 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Resource Gathering
 **Lives in:** `resources.js`
-**What it does:** Provides resource search and harvesting logic. Finds nearest harvestable nature objects by resource type or by most-needed resource. Harvests objects over time based on settler strength and tool power. Manages nature object depletion and regrowth timers.
-**Connects to:** `state.js` (nature objects, resource counts), `constants.js` (HARVESTABLE definitions)
-**Key functions:** `findNearestResource()`, `findNearestAnyResource()`, `harvestObject()`, `updateNatureObjects()`
+**What it does:** Provides resource search and harvesting logic. Finds nearest harvestable nature objects by resource type or by most-needed resource. Harvests objects over time based on settler strength and tool power. Manages nature object depletion and regrowth timers. Completed farms passively generate food during daytime.
+**Connects to:** `state.js` (nature objects, resource counts), `constants.js` (HARVESTABLE definitions, BUILDING_DEFS), `buildings.js` (farm buildings), `dayNight.js` (daytime check)
+**Key functions:** `findNearestResource()`, `findNearestAnyResource()`, `harvestObject()`, `updateNatureObjects()`, `updateFarms()`
 
 ### Enemies & Combat
 **Lives in:** `enemies.js`, `combat.js`, `characters.js` (AI integration), `init.js` (rendering)
@@ -89,9 +89,9 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
-**What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), buildings as colored rectangles with opacity based on build phase, settlers as colored shapes with name/activity labels. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers.
+**What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), buildings as colored rectangles with opacity based on build phase, settlers as colored shapes with name/activity labels (children at 60% scale). Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers. Displays floating notifications (births, growth, deaths) at screen top with fade-out.
 **Connects to:** All data systems via `_state`
-**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `handleMapClick()`
+**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `createEnemySprite()`, `updateEnemySprites()`, `handlePhaseTransitions()`, `updateKnockoutIndicators()`, `showDeathNotification()`, `updateNotifications()`, `handleMapClick()`
 
 ### UI
 **Lives in:** `ui.js`, `events.js`

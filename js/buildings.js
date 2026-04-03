@@ -150,25 +150,58 @@ function advanceBuild(building, settler, delta) {
  * Returns a BUILDING type string or null.
  */
 function decideBuildPriority() {
-  // If no campfire, build one
+  const pop = _state.settlers.filter(s => !s.isDead).length;
+
+  // 1. Campfire (if none exists)
   if (!hasBuilding(BUILDING.CAMPFIRE)) return BUILDING.CAMPFIRE;
 
-  // If no storage, build storage
+  // 2. Storage shed (if none exists)
   if (!hasBuilding(BUILDING.STORAGE)) return BUILDING.STORAGE;
 
-  // If no hut and settlers have no shelter, build hut
+  // 3. Hut (if no shelter exists)
   if (!hasBuilding(BUILDING.HUT) && !hasBuilding(BUILDING.HOUSE)) return BUILDING.HUT;
 
-  // If no workbench, build workbench
+  // 4. Workbench (if none exists)
   if (!hasBuilding(BUILDING.WORKBENCH)) return BUILDING.WORKBENCH;
 
-  // If population is near capacity, build another shelter
+  // 5. Additional huts (if population is within 1 of total bed capacity)
   const totalBeds = getTotalBedCapacity();
-  const pop = _state.settlers.length;
-  if (totalBeds - pop < 2) {
-    // Build house if unlocked (pop >= 8), otherwise hut
+  if (totalBeds - pop <= 1) {
     if (pop >= BUILDING_DEFS[BUILDING.HOUSE].unlockPop) return BUILDING.HOUSE;
     return BUILDING.HUT;
+  }
+
+  // 6. House (if population >= 8 and upgrading makes sense)
+  if (pop >= BUILDING_DEFS[BUILDING.HOUSE].unlockPop && !hasBuilding(BUILDING.HOUSE)) {
+    return BUILDING.HOUSE;
+  }
+
+  // 7. Farm (if population >= 6 and no farm exists)
+  if (pop >= BUILDING_DEFS[BUILDING.FARM].unlockPop && !hasBuilding(BUILDING.FARM)) {
+    return BUILDING.FARM;
+  }
+
+  // 8. Forge (if population >= 6, workbench exists, iron ore > 0, no forge)
+  if (pop >= 6 && hasBuilding(BUILDING.WORKBENCH) && _state.resources.iron > 0 && !hasBuilding(BUILDING.FORGE)) {
+    return BUILDING.FORGE;
+  }
+
+  // 9. Watchtower (if population >= 10 and no watchtower exists)
+  if (pop >= BUILDING_DEFS[BUILDING.WATCHTOWER].unlockPop && !hasBuilding(BUILDING.WATCHTOWER)) {
+    return BUILDING.WATCHTOWER;
+  }
+
+  // 10. Additional houses/huts as population grows (keep capacity >= population + 2)
+  if (totalBeds < pop + 2) {
+    if (pop >= BUILDING_DEFS[BUILDING.HOUSE].unlockPop) return BUILDING.HOUSE;
+    return BUILDING.HUT;
+  }
+
+  // 11. Additional farms as population grows (one farm per 8 settlers)
+  const farmCount = getBuildingsOfType(BUILDING.FARM).length;
+  const neededFarms = Math.floor(pop / 8);
+  if (pop >= BUILDING_DEFS[BUILDING.FARM].unlockPop && farmCount < neededFarms) {
+    return BUILDING.FARM;
   }
 
   return null;
