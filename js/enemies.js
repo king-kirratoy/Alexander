@@ -20,7 +20,7 @@ function spawnEnemies() {
     minCount = 2; maxCount = Math.min(5, 2 + Math.floor(pop / 4));
   } else {
     // Late game scales with population
-    minCount = 3; maxCount = Math.min(12, 3 + Math.floor(pop / 3));
+    minCount = 3; maxCount = Math.min(8, 3 + Math.floor(pop / 3));
   }
 
   const count = randInt(minCount, maxCount);

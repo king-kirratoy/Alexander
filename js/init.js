@@ -890,26 +890,10 @@ class GameScene extends Phaser.Scene {
   // ── Rendering ───────────────────────────────────────────────
 
   renderTileMap() {
-    // Split into 4 quadrant RenderTextures to stay within the WebGL max texture
-    // size limit (4096px). Each quadrant covers half the world: 2560×1920 px.
-    // Using draw() on a sized Image object correctly scales tiles to TILE_SIZE×TILE_SIZE
-    // instead of drawFrame() which renders at the native texture resolution.
-    const HALF_W    = Math.floor(WORLD_WIDTH  / 2); // 2560
-    const HALF_H    = Math.floor(WORLD_HEIGHT / 2); // 1920
-    const HALF_COLS = Math.floor(WORLD_COLS   / 2); // 40
-    const HALF_ROWS = Math.floor(WORLD_ROWS   / 2); // 30
-
-    // quads[qx][qy] — qx 0=left, 1=right; qy 0=top, 1=bottom
-    const quads = [
-      [
-        this.add.renderTexture(0,      0,      HALF_W, HALF_H).setDepth(0),
-        this.add.renderTexture(0,      HALF_H, HALF_W, HALF_H).setDepth(0)
-      ],
-      [
-        this.add.renderTexture(HALF_W, 0,      HALF_W, HALF_H).setDepth(0),
-        this.add.renderTexture(HALF_W, HALF_H, HALF_W, HALF_H).setDepth(0)
-      ]
-    ];
+    // Single RenderTexture — 2560×1920 fits within 4096×4096 browser limit
+    this._groundLayer = this.add.renderTexture(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this._groundLayer.setOrigin(0, 0);
+    this._groundLayer.setDepth(0);
 
     // Single reusable image — setTexture() swaps the texture each iteration,
     // setDisplaySize() scales it to exactly TILE_SIZE×TILE_SIZE.
@@ -917,26 +901,20 @@ class GameScene extends Phaser.Scene {
     tempImg.setDisplaySize(TILE_SIZE, TILE_SIZE);
 
     for (let row = 0; row < WORLD_ROWS; row++) {
-      const qy   = row < HALF_ROWS ? 0 : 1;
-      const offY = qy * HALF_H;
       for (let col = 0; col < WORLD_COLS; col++) {
-        const qx     = col < HALF_COLS ? 0 : 1;
-        const offX   = qx * HALF_W;
-        const drawX  = col * TILE_SIZE - offX;
-        const drawY  = row * TILE_SIZE - offY;
         const tileType = _state.tileMap[row][col];
-        const key    = TILE_TEXTURE_MAP[tileType];
+        const key = TILE_TEXTURE_MAP[tileType];
         if (key) {
           tempImg.setTexture(key);
           tempImg.setDisplaySize(TILE_SIZE, TILE_SIZE);
-          quads[qx][qy].draw(tempImg, drawX, drawY);
+          this._groundLayer.draw(tempImg, col * TILE_SIZE, row * TILE_SIZE);
         } else {
           // Fallback: solid color rect for unmapped tile types
           const color = TILE_COLORS[tileType] || 0x333333;
           const fallbackGfx = this.add.graphics().setVisible(false);
           fallbackGfx.fillStyle(color, 1);
           fallbackGfx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-          quads[qx][qy].draw(fallbackGfx, drawX, drawY);
+          this._groundLayer.draw(fallbackGfx, col * TILE_SIZE, row * TILE_SIZE);
           fallbackGfx.destroy();
         }
       }

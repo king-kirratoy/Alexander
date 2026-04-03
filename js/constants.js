@@ -2,13 +2,13 @@
 
 window.AX = {};
 
-const GAME_VERSION = 'v1.4';
+const GAME_VERSION = 'v1.5';
 const DEBUG = false; // Set to true for diagnostic logging
 
 // ── World ──────────────────────────────────────────────────────
 const TILE_SIZE = 64;
-const WORLD_COLS = 80;
-const WORLD_ROWS = 60;
+const WORLD_COLS = 40;
+const WORLD_ROWS = 30;
 const WORLD_WIDTH = WORLD_COLS * TILE_SIZE;
 const WORLD_HEIGHT = WORLD_ROWS * TILE_SIZE;
 

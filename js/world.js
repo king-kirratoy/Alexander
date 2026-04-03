@@ -14,9 +14,9 @@ function generateWorld(seed) {
   for (let row = 0; row < WORLD_ROWS; row++) {
     _state.tileMap[row] = [];
     for (let col = 0; col < WORLD_COLS; col++) {
-      const t = terrainNoise(col * 0.06, row * 0.06);
-      const m = moistureNoise(col * 0.04, row * 0.04);
-      const d = detailNoise(col * 0.15, row * 0.15);
+      const t = terrainNoise(col * 0.09, row * 0.09);
+      const m = moistureNoise(col * 0.06, row * 0.06);
+      const d = detailNoise(col * 0.22, row * 0.22);
 
       let tile;
       if (t < 0.25) {
@@ -56,7 +56,7 @@ function generateWorld(seed) {
   // ── Clear starting area (center of map) ─────────────────────
   const startCol = Math.floor(WORLD_COLS / 2);
   const startRow = Math.floor(WORLD_ROWS / 2);
-  const clearRadius = 6;
+  const clearRadius = 4;
 
   for (let r = startRow - clearRadius; r <= startRow + clearRadius; r++) {
     for (let c = startCol - clearRadius; c <= startCol + clearRadius; c++) {
@@ -156,7 +156,7 @@ function placeNatureObject(type, col, row) {
  * Ensure there are enough resources near the starting area.
  */
 function ensureNearbyResources(centerCol, centerRow) {
-  const radius = 12;
+  const radius = 8;
   let nearbyTrees = 0;
   let nearbyRocks = 0;
   let nearbyBerries = 0;
@@ -174,8 +174,8 @@ function ensureNearbyResources(centerCol, centerRow) {
   const minRocks = 4;
   const minBerries = 3;
 
-  const ringMin = 7;
-  const ringMax = 11;
+  const ringMin = 5;
+  const ringMax = 8;
 
   while (nearbyTrees < minTrees) {
     const angle = Math.random() * Math.PI * 2;
