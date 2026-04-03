@@ -35,6 +35,20 @@ const SETTLER_COLORS = {
   female: 0xaa4488,
 };
 
+const BUILDING_COLORS = {
+  [BUILDING.CAMPFIRE]: 0xe06020,
+  [BUILDING.HUT]: 0x8b6914,
+  [BUILDING.STORAGE]: 0x7a6030,
+  [BUILDING.WORKBENCH]: 0x6e5020,
+  [BUILDING.WALL_WOOD]: 0x6e4a20,
+  [BUILDING.WALL_STONE]: 0x888888,
+  [BUILDING.WATCHTOWER]: 0x7a5a28,
+  [BUILDING.HOUSE]: 0xa07040,
+  [BUILDING.FORGE]: 0x4a4040,
+  [BUILDING.FARM]: 0x5a8f3c,
+  [BUILDING.GATE]: 0x8a6a30,
+};
+
 
 // ═══════════ BOOT SCENE ═══════════
 
@@ -62,6 +76,7 @@ class GameScene extends Phaser.Scene {
     this._tileGraphics = null;
     this._natureSprites = [];
     this._settlerSprites = {};
+    this._buildingSprites = {};
     this._hudUpdateTimer = 0;
     this._isDragging = false;
     this._dragStart = { x: 0, y: 0 };
@@ -79,6 +94,9 @@ class GameScene extends Phaser.Scene {
 
     // ── Render nature objects ───────────────────────────────
     this.renderNatureObjects();
+
+    // ── Render buildings ────────────────────────────────────
+    this.renderBuildings();
 
     // ── Spawn settlers ──────────────────────────────────────
     spawnStartingSettlers();
@@ -152,6 +170,9 @@ class GameScene extends Phaser.Scene {
 
     // ── Update settler sprites ──────────────────────────────
     this.updateSettlerSprites();
+
+    // ── Update building sprites ─────────────────────────────
+    this.updateBuildingSprites();
 
     // ── Update nature object visuals ────────────────────────
     this.updateNatureVisuals();
@@ -304,7 +325,7 @@ class GameScene extends Phaser.Scene {
       const actLabel = container.getData('activityLabel');
       if (actLabel) {
         const act = settler.currentActivity;
-        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating') {
+        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating' || act === 'building' || act === 'crafting') {
           actLabel.setText('[' + act + ']');
           actLabel.setVisible(true);
         } else {
@@ -369,6 +390,96 @@ class GameScene extends Phaser.Scene {
           obj.sprite.fillStyle(0x6e4a20, 1);
           obj.sprite.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
         }
+      }
+    }
+  }
+
+
+  // ── Building Rendering ──────────────────────────────────────
+
+  renderBuildings() {
+    for (const building of _state.buildings) {
+      this.createBuildingSprite(building);
+    }
+  }
+
+
+  createBuildingSprite(building) {
+    const def = BUILDING_DEFS[building.type];
+    if (!def) return;
+
+    const color = BUILDING_COLORS[building.type] || 0x888888;
+    const w = def.size.w * TILE_SIZE;
+    const h = def.size.h * TILE_SIZE;
+    const x = building.col * TILE_SIZE;
+    const y = building.row * TILE_SIZE;
+
+    const opacity = this.getBuildPhaseOpacity(building.phase);
+
+    const gfx = this.add.graphics();
+    gfx.setDepth(2);
+
+    // Shadow
+    gfx.fillStyle(0x000000, 0.15 * opacity);
+    gfx.fillRect(x + 3, y + 3, w, h);
+
+    // Main rect
+    gfx.fillStyle(color, opacity);
+    gfx.fillRect(x, y, w, h);
+
+    // Border
+    gfx.lineStyle(1, 0x000000, 0.3 * opacity);
+    gfx.strokeRect(x, y, w, h);
+
+    building.sprite = gfx;
+    gfx.setData('phase', building.phase);
+    this._buildingSprites[building.id] = gfx;
+  }
+
+
+  getBuildPhaseOpacity(phase) {
+    if (phase === BUILD_PHASE.FOUNDATION) return 0.3;
+    if (phase === BUILD_PHASE.FRAME) return 0.5;
+    if (phase === BUILD_PHASE.WALLS) return 0.75;
+    return 1.0;
+  }
+
+
+  updateBuildingSprites() {
+    // Create sprites for any new buildings
+    for (const building of _state.buildings) {
+      if (!this._buildingSprites[building.id]) {
+        this.createBuildingSprite(building);
+      }
+    }
+
+    // Update existing building sprites when phase changes
+    for (const building of _state.buildings) {
+      const gfx = this._buildingSprites[building.id];
+      if (!gfx) continue;
+
+      const trackedPhase = gfx.getData('phase');
+      if (trackedPhase !== building.phase) {
+        // Phase changed — redraw
+        gfx.clear();
+        const def = BUILDING_DEFS[building.type];
+        if (!def) continue;
+
+        const color = BUILDING_COLORS[building.type] || 0x888888;
+        const w = def.size.w * TILE_SIZE;
+        const h = def.size.h * TILE_SIZE;
+        const x = building.col * TILE_SIZE;
+        const y = building.row * TILE_SIZE;
+        const opacity = this.getBuildPhaseOpacity(building.phase);
+
+        gfx.fillStyle(0x000000, 0.15 * opacity);
+        gfx.fillRect(x + 3, y + 3, w, h);
+        gfx.fillStyle(color, opacity);
+        gfx.fillRect(x, y, w, h);
+        gfx.lineStyle(1, 0x000000, 0.3 * opacity);
+        gfx.strokeRect(x, y, w, h);
+
+        gfx.setData('phase', building.phase);
       }
     }
   }

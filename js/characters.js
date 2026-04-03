@@ -153,6 +153,16 @@ function updateSettlerAI(settler, delta) {
     if (handleForaging(settler, delta)) return;
   }
 
+  // If currently building, keep working
+  if (settler.currentTask && settler.currentTask.type === 'building') {
+    if (handleBuilding(settler, delta)) return;
+  }
+
+  // If currently crafting, keep working
+  if (settler.currentTask && settler.currentTask.type === 'crafting') {
+    if (handleCrafting(settler, delta)) return;
+  }
+
   // If still moving toward a destination, keep going
   if (settler.path && settler.pathIndex < settler.path.length) return;
 
@@ -169,13 +179,29 @@ function updateSettlerAI(settler, delta) {
     }
   }
 
-  // Priority 2: GATHER (find most-needed resource)
+  // Priority 2: BUILD (40)
+  if (typeof decideBuildPriority === 'function') {
+    if (tryBuild(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
+  // Priority 3: GATHER (30)
   if (tryGather(settler)) {
     settler.aiCooldown = randInt(1000, 2000);
     return;
   }
 
-  // Priority 3: IDLE (wander)
+  // Priority 4: CRAFT (20)
+  if (typeof decideWhatToCraft === 'function') {
+    if (tryCraft(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
+  // Priority 5: IDLE (wander)
   tryWander(settler);
   settler.aiCooldown = randInt(1000, 2000);
 }
@@ -232,6 +258,9 @@ function tryGather(settler) {
 
   const path = findPath(settler.col, settler.row, target.col, target.row);
   if (!path || path.length === 0) return false;
+
+  // Auto-equip best tool for this resource
+  autoEquipTool(settler, target);
 
   settler.path = path;
   settler.pathIndex = 0;
@@ -362,6 +391,240 @@ function handleForaging(settler, delta) {
   }
 
   return true;
+}
+
+
+/**
+ * Try to start or continue building.
+ * Returns true if an action was taken.
+ */
+function tryBuild(settler) {
+  // Check if another settler is already building
+  for (const s of _state.settlers) {
+    if (s.id !== settler.id && s.currentTask && s.currentTask.type === 'building') {
+      return false; // Only one builder at a time
+    }
+  }
+
+  // Check for incomplete building first
+  let target = typeof findIncompleteBuilding === 'function' ? findIncompleteBuilding() : null;
+
+  if (!target) {
+    // See if we need a new building
+    const buildType = decideBuildPriority();
+    if (!buildType) return false;
+    if (typeof canAffordBuilding !== 'function' || !canAffordBuilding(buildType)) return false;
+
+    // Find a build site
+    const centerCol = Math.floor(WORLD_COLS / 2);
+    const centerRow = Math.floor(WORLD_ROWS / 2);
+    const site = findBuildSite(centerCol, centerRow, buildType);
+    if (!site) return false;
+
+    // Pay the cost and place the building
+    payBuildingCost(buildType);
+    target = createBuilding(buildType, site.col, site.row);
+    if (!target) return false;
+  }
+
+  // Path to the building
+  const path = findPath(settler.col, settler.row, target.col, target.row);
+  if (!path || path.length === 0) {
+    // Try adjacent tile
+    const adjPath = findPath(settler.col, settler.row, target.col + 1, target.row);
+    if (adjPath && adjPath.length > 0) {
+      settler.path = adjPath;
+    } else {
+      return false;
+    }
+  } else {
+    settler.path = path;
+  }
+
+  settler.pathIndex = 0;
+  settler.currentTask = { type: 'building', targetId: target.id };
+  settler.currentActivity = 'walking';
+  settler.currentPriority = AI_PRIORITY.BUILD;
+  return true;
+}
+
+
+/**
+ * Handle active building when settler is near the target building.
+ * Returns true if still busy.
+ */
+function handleBuilding(settler, delta) {
+  const building = _state.buildings.find(b => b.id === settler.currentTask.targetId);
+
+  if (!building || building.phase >= BUILD_PHASE.COMPLETE) {
+    clearTask(settler);
+    return false;
+  }
+
+  // Check if within range (adjacent to building footprint)
+  const def = BUILDING_DEFS[building.type];
+  let minDist = Infinity;
+  if (def) {
+    for (let dr = 0; dr < def.size.h; dr++) {
+      for (let dc = 0; dc < def.size.w; dc++) {
+        const d = dist(settler.col, settler.row, building.col + dc, building.row + dr);
+        if (d < minDist) minDist = d;
+      }
+    }
+  } else {
+    minDist = dist(settler.col, settler.row, building.col, building.row);
+  }
+
+  if (minDist > 2) {
+    // Need to path closer
+    if (!settler.path || settler.pathIndex >= settler.path.length) {
+      const path = findPath(settler.col, settler.row, building.col, building.row);
+      if (path && path.length > 0) {
+        settler.path = path;
+        settler.pathIndex = 0;
+      } else {
+        clearTask(settler);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // We're close enough — stop moving and build
+  settler.path = null;
+  settler.pathIndex = 0;
+  settler.currentActivity = 'building';
+
+  if (typeof advanceBuild === 'function') {
+    advanceBuild(building, settler, delta);
+    if (building.phase >= BUILD_PHASE.COMPLETE) {
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/**
+ * Try to start crafting an item.
+ * Returns true if an action was taken.
+ */
+function tryCraft(settler) {
+  const recipeKey = decideWhatToCraft();
+  if (!recipeKey) return false;
+
+  const recipe = RECIPES[recipeKey];
+  if (!recipe) return false;
+
+  // Check if recipe requires a workbench — if so, walk to it
+  if (recipe.tier === RECIPE_TIER.WORKBENCH || recipe.tier === RECIPE_TIER.FORGE) {
+    const stationType = recipe.tier === RECIPE_TIER.FORGE ? BUILDING.FORGE : BUILDING.WORKBENCH;
+    const stations = typeof getBuildingsOfType === 'function' ? getBuildingsOfType(stationType) : [];
+    if (stations.length === 0) return false;
+
+    // Find nearest station
+    let nearestStation = null;
+    let nearestD = Infinity;
+    for (const s of stations) {
+      const d = dist(settler.col, settler.row, s.col, s.row);
+      if (d < nearestD) {
+        nearestD = d;
+        nearestStation = s;
+      }
+    }
+
+    if (!nearestStation) return false;
+
+    // If not adjacent, path to it
+    if (nearestD > 2) {
+      const path = findPath(settler.col, settler.row, nearestStation.col, nearestStation.row);
+      if (!path || path.length === 0) return false;
+      settler.path = path;
+      settler.pathIndex = 0;
+    }
+  }
+
+  settler.currentTask = { type: 'crafting', recipeKey: recipeKey, progress: 0 };
+  settler.currentActivity = 'walking';
+  settler.currentPriority = AI_PRIORITY.CRAFT;
+  return true;
+}
+
+
+/**
+ * Handle active crafting. Settler spends a few seconds, then produces the item.
+ * Returns true if still busy.
+ */
+function handleCrafting(settler, delta) {
+  const task = settler.currentTask;
+  const recipe = RECIPES[task.recipeKey];
+
+  if (!recipe) {
+    clearTask(settler);
+    return false;
+  }
+
+  // If recipe needs a station and we're not near it, keep walking
+  if (recipe.tier === RECIPE_TIER.WORKBENCH || recipe.tier === RECIPE_TIER.FORGE) {
+    const stationType = recipe.tier === RECIPE_TIER.FORGE ? BUILDING.FORGE : BUILDING.WORKBENCH;
+    const stations = typeof getBuildingsOfType === 'function' ? getBuildingsOfType(stationType) : [];
+    let nearStation = false;
+    for (const s of stations) {
+      if (dist(settler.col, settler.row, s.col, s.row) <= 2) {
+        nearStation = true;
+        break;
+      }
+    }
+    if (!nearStation) {
+      if (settler.path && settler.pathIndex < settler.path.length) return true;
+      // Lost our way — give up
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  // We're in position — stop and craft
+  settler.path = null;
+  settler.pathIndex = 0;
+  settler.currentActivity = 'crafting';
+
+  // Accumulate crafting progress (takes ~3 seconds)
+  let craftSpeed = 1;
+  if (settler.personality.effect === 'workSpeed') {
+    craftSpeed = settler.personality.mod;
+  }
+  task.progress += craftSpeed * (delta / 1000);
+
+  if (task.progress >= 3) {
+    // Check we can still afford it
+    if (typeof canAffordRecipe === 'function' && canAffordRecipe(task.recipeKey)) {
+      if (typeof craftItem === 'function') {
+        craftItem(task.recipeKey);
+      }
+    }
+    clearTask(settler);
+    return false;
+  }
+
+  return true;
+}
+
+
+/**
+ * Auto-equip the best available tool for a gather task.
+ */
+function autoEquipTool(settler, natureObj) {
+  if (typeof findBestTool !== 'function') return;
+
+  const info = HARVESTABLE[natureObj.type];
+  if (!info || !info.tool) return;
+
+  const best = findBestTool(info.tool);
+  if (best) {
+    settler.equippedTool = best;
+  }
 }
 
 

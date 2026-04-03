@@ -2,7 +2,7 @@
 
 > An idle civilization-building survival simulation where settlers autonomously gather resources, build a community, and defend against nighttime threats.
 
-**Current version:** v0.2
+**Current version:** v0.3
 Last updated: April 3, 2026 (Central Time)
 
 ---
@@ -20,9 +20,9 @@ Last updated: April 3, 2026 (Central Time)
 | `js/utils.js` | Pure helpers: `randInt`, `randFloat`, `randPick`, `shuffle`, `clamp`, `dist`, `tileToWorld`, `worldToTile`, `inBounds`, `isWalkable`, `makeNoise` (Perlin-like value noise generator), `uid`. |
 | `js/world.js` | Procedural map generation using layered noise. Creates tile map with grass/dirt/water terrain distribution. Places nature objects (trees, rocks, iron ore, berry bushes, shrubs) with clustering via noise. Clears a starting area at map center. Ensures minimum nearby resources. |
 | `js/pathfinding.js` | EasyStar.js integration. `initPathfinding()` builds walkability grid from tile map. `findPath()` returns synchronous A* path. `findNearestWalkable()` for fallback targeting. |
-| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: EAT (hunger < 30) → GATHER (lowest resource) → IDLE (wander). Settlers harvest nature objects over time and deposit resources into stockpile. |
-| `js/buildings.js` | Stub — Phase 3. |
-| `js/crafting.js` | Stub — Phase 3. |
+| `js/characters.js` | Settler creation with randomized names, gender, personality, and stats. `spawnStartingSettlers()` places 3–5 settlers near map center. `updateSettlers()` runs per-frame: hunger drain, health regen/damage, AI decisions, path movement. Priority-based AI: EAT (hunger < 30) → BUILD (place/construct buildings) → GATHER (lowest resource) → CRAFT (tools/weapons) → IDLE (wander). Settlers auto-equip best tools when gathering. Building and crafting tasks use continuation handlers. |
+| `js/buildings.js` | Building creation, placement, and construction. `createBuilding()` adds buildings to state with phase tracking. `findBuildSite()` finds valid placement near existing buildings (clustering). `advanceBuild()` progresses construction through FOUNDATION → FRAME → WALLS → COMPLETE phases. `decideBuildPriority()` determines what to build next (campfire → storage → hut → workbench → more shelter). Query functions: `getBuildingAt()`, `getBuildingsOfType()`, `hasBuilding()`. |
+| `js/crafting.js` | Crafting system with tiered recipes. `getAvailableRecipes()` filters by tier (BASIC always, WORKBENCH/FORGE require buildings). `craftItem()` deducts costs and adds items to inventory. `findBestTool()`/`findBestWeapon()` search inventory by power. `decideWhatToCraft()` prioritizes tools (axe → pickaxe) then weapons, then upgrades. |
 | `js/resources.js` | Resource gathering system. `findNearestResource()` and `findNearestAnyResource()` locate harvestable nature objects. `harvestObject()` drains object HP over time and adds resources to stockpile on depletion. `updateNatureObjects()` handles regrowth of depleted trees and berry bushes. |
 | `js/enemies.js` | Stub — Phase 5. |
 | `js/combat.js` | Stub — Phase 5. |
@@ -53,9 +53,21 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Settlers
 **Lives in:** `characters.js`
-**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry (stockpile or forage), GATHER the most-needed resource, or IDLE wander. Settlers path to nature objects, harvest them over time, and deposit resources into the community stockpile.
-**Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts)
-**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `moveSettlerAlongPath()`
+**What it does:** Creates settlers with unique names, gender, personality traits, and stats. Manages per-frame updates: hunger drain, health regen, AI decisions, path-following movement. Priority-based AI evaluates every ~1-2 seconds: EAT when hungry → BUILD structures → GATHER resources → CRAFT tools/weapons → IDLE wander. Settlers auto-equip best tools when starting gather tasks. Building and crafting tasks use continuation handlers that persist across frames.
+**Connects to:** `pathfinding.js` (path requests), `resources.js` (finding/harvesting nature objects), `buildings.js` (build decisions, construction), `crafting.js` (craft decisions, tool lookup), `constants.js` (names, personalities, stats), `state.js` (settler array, resource counts)
+**Key functions:** `createSettler()`, `spawnStartingSettlers()`, `updateSettlers()`, `updateSettlerAI()`, `handleGathering()`, `handleForaging()`, `handleBuilding()`, `handleCrafting()`, `tryBuild()`, `tryCraft()`, `autoEquipTool()`
+
+### Buildings
+**Lives in:** `buildings.js`
+**What it does:** Manages building creation, site selection, and construction progression. Buildings are placed near existing structures to form clusters. Construction advances through four phases (foundation, frame, walls, complete) based on settler work. Provides priority logic for autonomous settlement growth.
+**Connects to:** `constants.js` (BUILDING_DEFS, BUILD_PHASE), `state.js` (buildings array, resources), `world.js` (getNatureAt for site validation), `utils.js` (random, distance)
+**Key functions:** `createBuilding()`, `findBuildSite()`, `advanceBuild()`, `decideBuildPriority()`, `getBuildingAt()`, `getBuildingsOfType()`, `hasBuilding()`
+
+### Crafting
+**Lives in:** `crafting.js`
+**What it does:** Manages tiered crafting recipes. Basic recipes are always available; workbench and forge tiers unlock when those buildings are complete. Settlers autonomously decide what to craft based on settlement needs (tools first, then weapons). Items are stored in shared inventory.
+**Connects to:** `constants.js` (RECIPES, RECIPE_TIER), `state.js` (resources, inventory), `buildings.js` (hasBuilding for tier checks), `utils.js` (uid)
+**Key functions:** `getAvailableRecipes()`, `canAffordRecipe()`, `craftItem()`, `findBestTool()`, `findBestWeapon()`, `decideWhatToCraft()`
 
 ### Resource Gathering
 **Lives in:** `resources.js`
@@ -65,9 +77,9 @@ Last updated: April 3, 2026 (Central Time)
 
 ### Rendering
 **Lives in:** `init.js` (GameScene class)
-**What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), settlers as colored shapes with name labels. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers.
+**What it does:** Renders tiles as colored rectangles, nature objects as colored circles with detail (berries, trunks), buildings as colored rectangles with opacity based on build phase, settlers as colored shapes with name/activity labels. Handles camera drag-to-pan, scroll-to-zoom, edge scrolling, and click-to-select settlers.
 **Connects to:** All data systems via `_state`
-**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `createSettlerSprites()`, `updateSettlerSprites()`, `handleMapClick()`, `handleEdgeScroll()`
+**Key functions:** `renderTileMap()`, `renderNatureObjects()`, `renderBuildings()`, `createBuildingSprite()`, `updateBuildingSprites()`, `createSettlerSprites()`, `updateSettlerSprites()`, `handleMapClick()`, `handleEdgeScroll()`
 
 ### UI
 **Lives in:** `ui.js`, `events.js`
