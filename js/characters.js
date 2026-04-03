@@ -36,6 +36,9 @@ function createSettler(col, row, isChild) {
     // AI state
     currentActivity: 'idle',
     currentPriority: AI_PRIORITY.IDLE,
+    currentTask: null,       // { type: 'gathering'|'eating'|'wandering', targetId }
+    aiCooldown: 0,           // ms until next AI re-evaluation
+    gatherProgress: 0,       // accumulator for harvest work
     targetCol: null,
     targetRow: null,
     path: null,
@@ -96,7 +99,6 @@ function spawnStartingSettlers() {
 
 /**
  * Update all settlers (called each frame).
- * Phase 1: simple random wandering.
  */
 function updateSettlers(delta) {
   for (const settler of _state.settlers) {
@@ -119,7 +121,7 @@ function updateSettlers(delta) {
       settler.health = clamp(settler.health, 0, settler.maxHealth);
     }
 
-    // Simple AI: random wander for Phase 1
+    // AI decision-making
     updateSettlerAI(settler, delta);
 
     // Move along path
@@ -134,15 +136,240 @@ function updateSettlers(delta) {
 
 
 /**
- * Basic AI decision-making.
- * Phase 1: just wander randomly.
+ * Priority-based AI decision-making.
+ * Re-evaluates when aiCooldown reaches 0 or current task completes.
  */
 function updateSettlerAI(settler, delta) {
-  // If already moving toward a target, keep going
+  // Count down AI cooldown
+  settler.aiCooldown -= delta;
+
+  // If currently harvesting at target, keep working
+  if (settler.currentTask && settler.currentTask.type === 'gathering') {
+    if (handleGathering(settler, delta)) return;
+  }
+
+  // If currently eating from forage target, keep working
+  if (settler.currentTask && settler.currentTask.type === 'foraging') {
+    if (handleForaging(settler, delta)) return;
+  }
+
+  // If still moving toward a destination, keep going
   if (settler.path && settler.pathIndex < settler.path.length) return;
 
-  // Pick a random nearby walkable tile to wander to
-  if (Math.random() < 0.02) { // ~2% chance per frame to pick new target
+  // If cooldown hasn't elapsed, don't re-evaluate
+  if (settler.aiCooldown > 0 && settler.currentTask) return;
+
+  // ── Evaluate priorities ──────────────────────────────────────
+
+  // Priority 1: EAT (hunger < 30)
+  if (settler.hunger < 30) {
+    if (tryEat(settler)) {
+      settler.aiCooldown = randInt(1000, 2000);
+      return;
+    }
+  }
+
+  // Priority 2: GATHER (find most-needed resource)
+  if (tryGather(settler)) {
+    settler.aiCooldown = randInt(1000, 2000);
+    return;
+  }
+
+  // Priority 3: IDLE (wander)
+  tryWander(settler);
+  settler.aiCooldown = randInt(1000, 2000);
+}
+
+
+/**
+ * Try to eat — from stockpile first, then forage.
+ * Returns true if an action was taken.
+ */
+function tryEat(settler) {
+  // Try stockpile first
+  if (_state.resources.food > 0) {
+    _state.resources.food -= 1;
+    settler.hunger = clamp(settler.hunger + 40, 0, settler.maxHunger);
+    settler.currentActivity = 'eating';
+    settler.currentTask = { type: 'eating' };
+    settler.currentPriority = AI_PRIORITY.EAT;
+    settler.path = null;
+    settler.pathIndex = 0;
+    settler.aiCooldown = 1500; // brief pause while "eating"
+    return true;
+  }
+
+  // No stockpile food — find nearest berry bush
+  if (typeof findNearestResource === 'function') {
+    const berryBush = findNearestResource(settler.col, settler.row, 'food');
+    if (berryBush) {
+      const path = findPath(settler.col, settler.row, berryBush.col, berryBush.row);
+      if (path && path.length > 0) {
+        settler.path = path;
+        settler.pathIndex = 0;
+        settler.currentTask = { type: 'foraging', targetId: berryBush.id };
+        settler.currentActivity = 'walking';
+        settler.currentPriority = AI_PRIORITY.EAT;
+        settler.gatherProgress = 0;
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+
+/**
+ * Try to gather the most-needed resource.
+ * Returns true if an action was taken.
+ */
+function tryGather(settler) {
+  if (typeof findNearestAnyResource !== 'function') return false;
+
+  const target = findNearestAnyResource(settler.col, settler.row);
+  if (!target) return false;
+
+  const path = findPath(settler.col, settler.row, target.col, target.row);
+  if (!path || path.length === 0) return false;
+
+  settler.path = path;
+  settler.pathIndex = 0;
+  settler.gatherProgress = 0;
+  settler.currentPriority = AI_PRIORITY.GATHER;
+
+  // Set activity based on resource type
+  const info = HARVESTABLE[target.type];
+  if (info) {
+    if (info.resource === 'wood') settler.currentActivity = 'walking';
+    else if (info.resource === 'stone') settler.currentActivity = 'walking';
+    else if (info.resource === 'food') settler.currentActivity = 'walking';
+    else if (info.resource === 'iron') settler.currentActivity = 'walking';
+    else settler.currentActivity = 'walking';
+  } else {
+    settler.currentActivity = 'walking';
+  }
+
+  settler.currentTask = { type: 'gathering', targetId: target.id };
+  return true;
+}
+
+
+/**
+ * Handle active gathering when settler is near their target.
+ * Returns true if still busy (should not re-evaluate AI).
+ */
+function handleGathering(settler, delta) {
+  const target = _state.natureObjects.find(o => o.id === settler.currentTask.targetId);
+
+  // Target gone or depleted — clear task
+  if (!target || target.depleted) {
+    clearTask(settler);
+    return false;
+  }
+
+  // Check if within 1 tile distance
+  const d = dist(settler.col, settler.row, target.col, target.row);
+  if (d > 1.5) {
+    // Not close enough yet — might need a new path
+    if (!settler.path || settler.pathIndex >= settler.path.length) {
+      const path = findPath(settler.col, settler.row, target.col, target.row);
+      if (path && path.length > 0) {
+        settler.path = path;
+        settler.pathIndex = 0;
+      } else {
+        clearTask(settler);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // We're adjacent — stop moving and harvest
+  settler.path = null;
+  settler.pathIndex = 0;
+
+  // Set activity label based on resource
+  const info = HARVESTABLE[target.type];
+  if (info) {
+    if (info.resource === 'wood') settler.currentActivity = 'chopping';
+    else if (info.resource === 'stone') settler.currentActivity = 'mining';
+    else if (info.resource === 'food') settler.currentActivity = 'foraging';
+    else if (info.resource === 'iron') settler.currentActivity = 'mining';
+  }
+
+  // Harvest the object
+  if (typeof harvestObject === 'function') {
+    const justDepleted = harvestObject(target, settler, delta);
+    if (justDepleted) {
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/**
+ * Handle active foraging (eating from a berry bush when hungry).
+ * Returns true if still busy.
+ */
+function handleForaging(settler, delta) {
+  const target = _state.natureObjects.find(o => o.id === settler.currentTask.targetId);
+
+  if (!target || target.depleted) {
+    clearTask(settler);
+    return false;
+  }
+
+  // Check if within 1 tile distance
+  const d = dist(settler.col, settler.row, target.col, target.row);
+  if (d > 1.5) {
+    if (!settler.path || settler.pathIndex >= settler.path.length) {
+      const path = findPath(settler.col, settler.row, target.col, target.row);
+      if (path && path.length > 0) {
+        settler.path = path;
+        settler.pathIndex = 0;
+      } else {
+        clearTask(settler);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Adjacent — forage (harvest the bush, then eat the result)
+  settler.path = null;
+  settler.pathIndex = 0;
+  settler.currentActivity = 'foraging';
+
+  if (typeof harvestObject === 'function') {
+    const justDepleted = harvestObject(target, settler, delta);
+    if (justDepleted) {
+      // Eat the food we just harvested (it was added to stockpile, consume it)
+      const info = HARVESTABLE[target.type];
+      if (info && _state.resources.food >= info.amount) {
+        _state.resources.food -= info.amount;
+        settler.hunger = clamp(settler.hunger + info.amount * 20, 0, settler.maxHunger);
+      } else {
+        // At least restore some hunger
+        settler.hunger = clamp(settler.hunger + 40, 0, settler.maxHunger);
+      }
+      clearTask(settler);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/**
+ * Wander randomly (fallback idle behavior).
+ */
+function tryWander(settler) {
+  if (Math.random() < 0.3) {
     const wanderRadius = 6;
     const targetCol = settler.col + randInt(-wanderRadius, wanderRadius);
     const targetRow = settler.row + randInt(-wanderRadius, wanderRadius);
@@ -153,9 +380,28 @@ function updateSettlerAI(settler, delta) {
         settler.path = path;
         settler.pathIndex = 0;
         settler.currentActivity = 'walking';
+        settler.currentTask = { type: 'wandering' };
+        settler.currentPriority = AI_PRIORITY.IDLE;
+        return;
       }
     }
   }
+
+  settler.currentActivity = 'idle';
+  settler.currentTask = null;
+  settler.currentPriority = AI_PRIORITY.IDLE;
+}
+
+
+/**
+ * Clear a settler's current task and reset to idle.
+ */
+function clearTask(settler) {
+  settler.currentTask = null;
+  settler.currentActivity = 'idle';
+  settler.currentPriority = AI_PRIORITY.IDLE;
+  settler.gatherProgress = 0;
+  settler.aiCooldown = 0; // re-evaluate immediately
 }
 
 
@@ -164,7 +410,12 @@ function updateSettlerAI(settler, delta) {
  */
 function moveSettlerAlongPath(settler, delta) {
   if (!settler.path || settler.pathIndex >= settler.path.length) {
-    settler.currentActivity = 'idle';
+    // Only set idle if not actively gathering/foraging
+    if (!settler.currentTask || settler.currentTask.type === 'wandering') {
+      if (settler.currentActivity === 'walking') {
+        settler.currentActivity = 'idle';
+      }
+    }
     return;
   }
 

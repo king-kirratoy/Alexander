@@ -142,11 +142,19 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (!_state.gameRunning || _state.menuOpen) return;
 
+    // ── Update nature objects (regrowth) ────────────────────
+    if (typeof updateNatureObjects === 'function') {
+      updateNatureObjects(Date.now());
+    }
+
     // ── Update settlers ─────────────────────────────────────
     updateSettlers(delta);
 
     // ── Update settler sprites ──────────────────────────────
     this.updateSettlerSprites();
+
+    // ── Update nature object visuals ────────────────────────
+    this.updateNatureVisuals();
 
     // ── Update HUD every 500ms ──────────────────────────────
     this._hudUpdateTimer += delta;
@@ -261,6 +269,18 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 1);
     container.add(nameText);
 
+    // Activity label (below name)
+    const activityText = this.add.text(0, -10, '', {
+      fontFamily: 'VT323',
+      fontSize: '11px',
+      color: '#aaaaaa',
+      stroke: '#000000',
+      strokeThickness: 1,
+    }).setOrigin(0.5, 1);
+    activityText.setVisible(false);
+    container.add(activityText);
+    container.setData('activityLabel', activityText);
+
     this._settlerSprites[settler.id] = container;
     settler.sprite = container;
 
@@ -279,6 +299,77 @@ class GameScene extends Phaser.Scene {
       if (!container) continue;
       container.x = settler.x;
       container.y = settler.y;
+
+      // Update activity label
+      const actLabel = container.getData('activityLabel');
+      if (actLabel) {
+        const act = settler.currentActivity;
+        if (act === 'chopping' || act === 'mining' || act === 'foraging' || act === 'eating') {
+          actLabel.setText('[' + act + ']');
+          actLabel.setVisible(true);
+        } else {
+          actLabel.setVisible(false);
+        }
+      }
+    }
+  }
+
+
+  updateNatureVisuals() {
+    for (const obj of _state.natureObjects) {
+      if (!obj.sprite) continue;
+
+      if (obj.depleted && !obj._visualDepleted) {
+        // Mark as visually depleted
+        obj._visualDepleted = true;
+        const info = NATURE_COLORS[obj.type];
+        const worldPos = tileToWorld(obj.col, obj.row);
+
+        obj.sprite.clear();
+
+        if (obj.type.startsWith('tree_')) {
+          // Show stump
+          obj.sprite.fillStyle(0x000000, 0.2);
+          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, 6);
+          obj.sprite.fillStyle(0x7a5a28, 1);
+          obj.sprite.fillCircle(worldPos.x, worldPos.y, 6);
+        } else if (obj.type === NATURE.BUSH_BERRY) {
+          // Plain green bush, no berries
+          obj.sprite.fillStyle(0x000000, 0.2);
+          obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
+          obj.sprite.fillStyle(0x3a7a30, 1);
+          obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
+        } else {
+          // Rocks/iron — hide
+          obj.sprite.setVisible(false);
+        }
+      } else if (!obj.depleted && obj._visualDepleted) {
+        // Regrown — restore original visual
+        obj._visualDepleted = false;
+        const info = NATURE_COLORS[obj.type];
+        if (!info) continue;
+        const worldPos = tileToWorld(obj.col, obj.row);
+
+        obj.sprite.clear();
+        obj.sprite.setVisible(true);
+
+        obj.sprite.fillStyle(0x000000, 0.2);
+        obj.sprite.fillCircle(worldPos.x + 2, worldPos.y + 2, info.radius);
+        obj.sprite.fillStyle(info.color, 1);
+        obj.sprite.fillCircle(worldPos.x, worldPos.y, info.radius);
+
+        if (obj.type === NATURE.BUSH_BERRY) {
+          obj.sprite.fillStyle(0xe03030, 1);
+          obj.sprite.fillCircle(worldPos.x - 4, worldPos.y - 3, 2.5);
+          obj.sprite.fillCircle(worldPos.x + 3, worldPos.y + 2, 2.5);
+          obj.sprite.fillCircle(worldPos.x + 1, worldPos.y - 5, 2.5);
+        }
+
+        if (obj.type.startsWith('tree_')) {
+          obj.sprite.fillStyle(0x6e4a20, 1);
+          obj.sprite.fillRect(worldPos.x - 3, worldPos.y + info.radius - 4, 6, 8);
+        }
+      }
     }
   }
 

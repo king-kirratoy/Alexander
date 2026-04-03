@@ -2,7 +2,7 @@
 
 window.AX = {};
 
-const GAME_VERSION = 'v0.1';
+const GAME_VERSION = 'v0.2';
 
 // ── World ──────────────────────────────────────────────────────
 const TILE_SIZE = 64;
