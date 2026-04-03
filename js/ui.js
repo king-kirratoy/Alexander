@@ -24,7 +24,7 @@ function showSettlerInfo(settler) {
   const el = (id) => document.getElementById(id);
   el('settlerName').textContent = settler.name + (settler.isChild ? ' (child)' : '');
   el('settlerPersonality').textContent = settler.personality.name;
-  el('settlerRole').textContent = settler.currentActivity;
+  el('settlerRole').textContent = getSettlerRole(settler);
   el('settlerActivity').textContent = settler.currentActivity;
   el('settlerLives').textContent = '❤'.repeat(settler.lives);
 
@@ -34,6 +34,26 @@ function showSettlerInfo(settler) {
   el('settlerHungerBar').style.width = hungerPct + '%';
 
   el('settlerInfo').classList.remove('hidden');
+}
+
+
+/**
+ * Determine a settler's natural role based on stats and personality.
+ */
+function getSettlerRole(settler) {
+  if (settler.isChild) return 'Child';
+
+  const strength = settler.strength;
+  const speed = settler.speed;
+  const personality = settler.personality.name;
+
+  if (personality === 'Brave') return 'Fighter';
+  if (personality === 'Industrious' && strength >= 10) return 'Builder';
+  if (personality === 'Swift' || speed > 90) return 'Forager';
+  if (strength >= 12) return 'Woodcutter';
+  if (strength >= 8) return 'Miner';
+  if (personality === 'Gentle') return 'Forager';
+  return 'Laborer';
 }
 
 
