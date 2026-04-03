@@ -51,12 +51,31 @@ function showSettlerInfo(settler) {
   el('settlerPersonality').textContent = settler.personality.name;
   el('settlerRole').textContent = getSettlerRole(settler);
   el('settlerActivity').textContent = settler.currentActivity;
-  el('settlerLives').textContent = '❤'.repeat(settler.lives);
+
+  // Red hearts for lives
+  let heartsHTML = '';
+  for (let i = 0; i < settler.lives; i++) {
+    heartsHTML += '<span class="heart-red">&#10084;</span>';
+  }
+  el('settlerLives').innerHTML = heartsHTML;
 
   const healthPct = (settler.health / settler.maxHealth) * 100;
   const hungerPct = (settler.hunger / settler.maxHunger) * 100;
   el('settlerHealthBar').style.width = healthPct + '%';
   el('settlerHungerBar').style.width = hungerPct + '%';
+
+  // Equipped tool & weapon
+  el('settlerTool').textContent = settler.equippedTool ? settler.equippedTool.name : 'None';
+  el('settlerWeapon').textContent = settler.equippedWeapon ? settler.equippedWeapon.name : 'None';
+
+  // Child age progress
+  const ageRow = el('settlerAgeRow');
+  if (settler.isChild) {
+    ageRow.classList.remove('hidden');
+    el('settlerAge').textContent = settler.age + '/5 cycles';
+  } else {
+    ageRow.classList.add('hidden');
+  }
 
   el('settlerInfo').classList.remove('hidden');
 }
@@ -167,7 +186,11 @@ function toggleActionPanel() {
   } else {
     panel.classList.add('hidden');
     toggle.classList.remove('active');
-    _state.activeAction = null;
+    if (typeof cancelDropAction === 'function') {
+      cancelDropAction();
+    } else {
+      _state.activeAction = null;
+    }
   }
 }
 

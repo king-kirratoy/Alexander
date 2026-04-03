@@ -69,15 +69,19 @@
       <div id="actionPanel" class="action-panel hidden">
         <button class="action-btn" data-action="dropWood" title="Drop Wood">
           <div class="hud-resource-icon hud-icon-wood"></div>
+          <span class="action-btn-label">+10</span>
         </button>
         <button class="action-btn" data-action="dropStone" title="Drop Stone">
           <div class="hud-resource-icon hud-icon-stone"></div>
+          <span class="action-btn-label">+10</span>
         </button>
         <button class="action-btn" data-action="dropFood" title="Drop Food">
           <div class="hud-resource-icon hud-icon-food"></div>
+          <span class="action-btn-label">+10</span>
         </button>
         <button class="action-btn" data-action="dropIron" title="Drop Iron">
           <div class="hud-resource-icon hud-icon-iron"></div>
+          <span class="action-btn-label">+5</span>
         </button>
       </div>
     </div>
@@ -117,6 +121,18 @@
       <div class="settler-stat">
         <span class="stat-label">Lives:</span>
         <span id="settlerLives" class="stat-value"></span>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Tool:</span>
+        <span id="settlerTool" class="stat-value"></span>
+      </div>
+      <div class="settler-stat">
+        <span class="stat-label">Weapon:</span>
+        <span id="settlerWeapon" class="stat-value"></span>
+      </div>
+      <div id="settlerAgeRow" class="settler-stat hidden">
+        <span class="stat-label">Age:</span>
+        <span id="settlerAge" class="stat-value"></span>
       </div>
     </div>
   </div>
